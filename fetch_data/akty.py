@@ -82,6 +82,7 @@ class FetchAkty:
         self.translate_cash = load_translate_cash()
         self.restart_required = False
         self.ended_games = {}
+
     async def save_games(self, data: dict, liga_name: str):
         """
         Сохраняет игры по отдельным ключам в Redis.
@@ -128,7 +129,7 @@ class FetchAkty:
             json_all_data = json.dumps(data_rate_match, ensure_ascii=False)
             if not self.debug:
                 await self.redis_client.add_to_list(key_for_all_data, json_data)
-                await self.redis_client.add_to_list(key_for_league_data, json_all_data)
+                await self.redis_client.add_to_list(key_for_league_data, json_all_data, max_len=2400)
                 if is_save:
                     await self.redis_client.add_to_list(key_for_save, json_data)
                 # Проверяем, нужно ли отправить данные в Telegram
