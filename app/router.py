@@ -77,6 +77,7 @@ async def get_fb_logs():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading log file: {str(e)}")
 
+
 @route.get("/get-game/{site}/{league}/{opponent_0}/{opponent_1}")
 async def get_game(
         site: str,
@@ -114,6 +115,35 @@ async def get_game(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@route.get("/get-league-games/{site}/{league}")
+async def get_league_games(
+        site: str,
+        league: str,
+) -> dict:
+    """
+     Получает все данные игр лиги по составному ключу,
+    по аналогии с предыдущим эндпоинтом.
+    """
+    try:
+        redis_client = RedisClient()
+        await redis_client.connect()
+
+        # Формируем ключ в нижнем регистре
+        key = f"{site.lower()}_all_data, {league.lower()}"
+
+        # Получаем данные из Redis
+        data = await redis_client.get_last_items(key)
+
+        if not data:
+            raise HTTPException(status_code=404, detail=f"Информация по лиге {key} не найдена")
+
+        return {"games": data}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @route.post("/update-token/")
 async def update_token(new_token: str):
