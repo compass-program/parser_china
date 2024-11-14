@@ -273,7 +273,7 @@ async def validate_data(data):
     """
     pattern = r"^I \d{2}:\d{2}$"
     current_time = datetime.now()
-    check_time = current_time - timedelta(minutes=45)
+    check_time = current_time - timedelta(minutes=35)
     check_time = check_time.strftime("%H:%M:%S")
     current_time = current_time.strftime("%H:%M:%S")
 
