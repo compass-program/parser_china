@@ -124,6 +124,16 @@ async def get_game(
 async def get_league_games(
         league: str,
 ) -> dict:
+    """
+     Получает данные всех игр по лиге.
+
+     Args:
+         league (str): Название лиги.
+
+     Returns:
+         dict: Данные всех актуальных игр лиги.
+
+    """
     try:
         redis_client = RedisClient()
         await redis_client.connect()
@@ -162,7 +172,17 @@ async def get_game_bets(
         bet: str = None
 ) -> dict:
     """
-     Получает все данные коэффициентов игры по составному ключу.
+     Получает данные о коэффициентах игры по составному ключу.
+
+     Args:
+         site (str): Сайт, откуда пришли данные.
+         league (str): Название лиги.
+         match (str, optional): Название матча. Если не указан, получает данные по всем матчам лиги.
+         bet (str, optional): Коэфф. (total_bet_0/total_bet_1). Если не указан, получает данные по всем коэфф. матча.
+
+     Returns:
+         dict: Данные игры или сообщение об ошибке, если данные не найдены.
+
     """
     try:
         redis_client = RedisClient()
