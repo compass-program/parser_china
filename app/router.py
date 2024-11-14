@@ -1,4 +1,5 @@
 import os
+import re
 import asyncio
 import aiofiles
 import subprocess
@@ -132,21 +133,16 @@ async def get_league_games(
         key_fb = f"fb.com_all_data, {league.lower()}"
 
         # Получаем данные всех игр лиги из Redis
-        data_akty = await redis_client.get_last_items(key_akty, count=2400)
-        data_fb = await redis_client.get_last_items(key_fb, count=2400)
+        data_akty = await redis_client.get_last_items(key_akty, count=1800)
+        data_fb = await redis_client.get_last_items(key_fb, count=1800)
 
-        # Отбрасываем неактуальные матчи
-        current_time = datetime.now()
-        check_time = current_time - timedelta(minutes=45)
-        check_time_str = check_time.strftime("%H:%M:%S")
-        expired_matches_akty = [record['match'] for record in data_akty if record['server_time'] < check_time_str]
-        expired_matches_fb = [record['match'] for record in data_fb if record['server_time'] < check_time_str]
-        data_akty = [record for record in data_akty if record['match'] not in expired_matches_akty]
-        data_fb = [record for record in data_fb if record['match'] not in expired_matches_fb]
+        # Выбираем только актуальные матчи
+        data_akty_val = await validate_data(data_akty)
+        data_fb_val = await validate_data(data_fb)
 
-        # Выбираем матчи идущие в лигах
-        akty_matches = set(record['match'] for record in data_akty)
-        fb_matches = set(record['match'] for record in data_fb)
+        # Выбираем матчи идущие в лиге
+        akty_matches = set(record['match'] for record in data_akty_val)
+        fb_matches = set(record['match'] for record in data_fb_val)
         league_data = {
             'ob': list(akty_matches),
             'fb': list(fb_matches)
@@ -176,14 +172,17 @@ async def get_game_bets(
         key = f"{site.lower()}_all_data, {league.lower()}"
 
         # Получаем данные всех матчей лиги из Redis
-        data = await redis_client.get_last_items(key, count=2400)
+        data = await redis_client.get_last_items(key, count=1800)
 
         if not data:
             raise HTTPException(status_code=404, detail=f"Информация по лиге {key} не найдена")
 
+        # Выбираем только актуальные матчи
+        data_val = await validate_data(data)
+
         # Если запрошен конкретный матч лиги, получаем данные по этому матчу
         if match:
-            match_data = [record for record in data if record['match'] == match]
+            match_data = [record for record in data_val if record['match'] == match]
 
             if not match_data:
                 raise HTTPException(status_code=404, detail=f"Игра {match} не найдена в лиге {key}")
@@ -195,7 +194,7 @@ async def get_game_bets(
 
             return {"game": match_data}
 
-        return {"games": data}
+        return {"games": data_val}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -246,3 +245,22 @@ async def update_token(new_token: str):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error updating token: {str(e)}")
+
+
+async def validate_data(data):
+    """
+    Фильтрация матчей начавшихся не позднее чем 45 минут назад
+    """
+    pattern = r"^I \d{2}:\d{2}$"
+    current_time = datetime.now()
+    check_time = current_time - timedelta(minutes=45)
+    check_time = check_time.strftime("%H:%M:%S")
+    current_time = current_time.strftime("%H:%M:%S")
+
+    valid_matches = [record['match'] for record in data if
+                          check_time <= record['server_time'] <= current_time and re.match(pattern,
+                                                                                           record["time_game"])]
+
+    validated_data = [record for record in data if record['match'] in valid_matches]
+
+    return validated_data
