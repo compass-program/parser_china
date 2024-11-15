@@ -12,7 +12,7 @@ from translatepy import Translator
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from zoneinfo import ZoneInfo
-from datetime import datetime
+from datetime import datetime, date
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.remote.webelement import WebElement
@@ -125,7 +125,14 @@ class FetchAkty:
             data_rate['time_game'] = data.get('time_game', '')
             json_data = json.dumps(data_rate, ensure_ascii=False)
             data_rate_match = data_rate.copy()
+            day = date.today().strftime("%Y-%m-%d")
             data_rate_match['match'] = f"{opponent_0.lower()}:{opponent_1.lower()}"
+            data_rate_match['match_date'] = day
+            pattern = r"^IV 0[1-3]:\d{2}$"
+            if re.match(pattern, data_rate_match["time_game"]):
+                data_rate_match['is_ended_soon'] = True
+            else:
+                data_rate_match['is_ended_soon'] = False
             json_all_data = json.dumps(data_rate_match, ensure_ascii=False)
             if not self.debug:
                 await self.redis_client.add_to_list(key_for_all_data, json_data)

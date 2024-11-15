@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from services_app.tasks import parse_some_data
 from app.schema import ParserRequest
 from transfer_data.redis_client import RedisClient
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
 route = APIRouter()
 # Удаляем loop = asyncio.get_event_loop() так как оно не используется
@@ -267,20 +267,29 @@ async def update_token(new_token: str):
         raise HTTPException(status_code=500, detail=f"Error updating token: {str(e)}")
 
 
-async def validate_data(data):
+async def validate_data(data: list) -> list:
     """
-    Фильтрация матчей начавшихся не позднее чем 45 минут назад
+    Фильтрация актуальных матчей.
+
+    Args:
+        data (list): Список данных всех матчей лиги.
+
+    Returns:
+          validated_data (list): Список данных актуальных матчей лиги.
     """
-    pattern = r"^I \d{2}:\d{2}$"
-    current_time = datetime.now()
-    check_time = current_time - timedelta(minutes=35)
-    check_time = check_time.strftime("%H:%M:%S")
-    current_time = current_time.strftime("%H:%M:%S")
+    try:
 
-    valid_matches = [record['match'] for record in data if
-                          check_time <= record['server_time'] <= current_time and re.match(pattern,
-                                                                                           record["time_game"])]
+        curr_date = date.today().strftime("%Y-%m-%d")
+        matches_today = [record for record in data if record['match_date'] == curr_date]
 
-    validated_data = [record for record in data if record['match'] in valid_matches]
+        curr_time = datetime.now()
+        check_time = curr_time - timedelta(minutes=6)
+        check_time = check_time.strftime("%H:%M:%S")
 
-    return validated_data
+        expired_matches = [match['match'] for match in matches_today if match['is_ended_soon'] and check_time > match['server_time']]
+        validated_data = [match for match in matches_today if match['match'] not in set(expired_matches)]
+
+        return validated_data
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

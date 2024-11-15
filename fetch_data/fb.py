@@ -6,7 +6,7 @@ import json
 import asyncio
 from typing import List, Dict, Any
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, date
 from dotenv import load_dotenv
 from zoneinfo import ZoneInfo
 from translatepy import Translator
@@ -193,7 +193,14 @@ class OddsFetcher:
             data_rate['time_game'] = data.get('time_game', '')
             json_data = json.dumps(data_rate, ensure_ascii=False)
             data_rate_match = data_rate.copy()
+            day = date.today().strftime("%Y-%m-%d")
             data_rate_match['match'] = f"{opponent_0.lower()}:{opponent_1.lower()}"
+            data_rate_match['match_date'] = day
+            pattern = r"^IV 0[1-3]:\d{2}$"
+            if re.match(pattern, data_rate_match["time_game"]):
+                data_rate_match['is_ended_soon'] = True
+            else:
+                data_rate_match['is_ended_soon'] = False
             json_all_data = json.dumps(data_rate_match, ensure_ascii=False)
             key_for_league_data = f"fb.com_all_data, {liga_name.lower()}"
             key_for_all_data = (f"fb.com_all_data, {liga_name.lower()}, "
