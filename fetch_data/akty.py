@@ -12,7 +12,7 @@ from translatepy import Translator
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from zoneinfo import ZoneInfo
-from datetime import datetime
+from datetime import datetime, date
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.remote.webelement import WebElement
@@ -82,6 +82,7 @@ class FetchAkty:
         self.translate_cash = load_translate_cash()
         self.restart_required = False
         self.ended_games = {}
+
     async def save_games(self, data: dict, liga_name: str):
         """
         Сохраняет игры по отдельным ключам в Redis.
@@ -115,6 +116,7 @@ class FetchAkty:
                     rate_bets))
             opponent_0 = data.get('opponent_0', '')
             opponent_1 = data.get('opponent_1', '')
+            key_for_league_data = f"akty.com_all_data, {liga_name.lower()}"
             key_for_all_data = (f"akty.com_all_data, {liga_name.lower()}, "
                    f"{opponent_0.lower()}, {opponent_1.lower()}")
             key_for_save = (f"akty.com, {liga_name.lower()}, "
@@ -122,8 +124,19 @@ class FetchAkty:
             data_rate['server_time'] = data.get('server_time', '')
             data_rate['time_game'] = data.get('time_game', '')
             json_data = json.dumps(data_rate, ensure_ascii=False)
+            data_rate_match = data_rate.copy()
+            day = date.today().strftime("%Y-%m-%d")
+            data_rate_match['match'] = f"{opponent_0.lower()}:{opponent_1.lower()}"
+            data_rate_match['match_date'] = day
+            pattern = r"^IV 0[1-3]:\d{2}$"
+            if re.match(pattern, data_rate_match["time_game"]):
+                data_rate_match['is_ended_soon'] = True
+            else:
+                data_rate_match['is_ended_soon'] = False
+            json_all_data = json.dumps(data_rate_match, ensure_ascii=False)
             if not self.debug:
                 await self.redis_client.add_to_list(key_for_all_data, json_data)
+                await self.redis_client.add_to_list(key_for_league_data, json_all_data, max_len=1800)
                 if is_save:
                     await self.redis_client.add_to_list(key_for_save, json_data)
                 # Проверяем, нужно ли отправить данные в Telegram
@@ -675,7 +688,7 @@ class FetchAkty:
                         opponent_1_score = opponent_1_score_div.find(
                             'span').get_text() if opponent_1_score_div else ""
 
-                        bet_divs = card.find_all('div', class_='handicap-col')
+                        bet_divs = list_mid_element.find_all('div', class_='handicap-col')
                         handicap_bet_div = bet_divs[1].find_all('span',
                                                                 class_='highlight-odds')
                         handicap_point_divs = bet_divs[1].find_all('div',

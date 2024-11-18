@@ -1,4 +1,5 @@
 import os
+import re
 import asyncio
 import aiofiles
 import subprocess
@@ -7,9 +8,11 @@ from fastapi import APIRouter, HTTPException
 from services_app.tasks import parse_some_data
 from app.schema import ParserRequest
 from transfer_data.redis_client import RedisClient
+from datetime import datetime, timedelta, date
 
 route = APIRouter()
 # Удаляем loop = asyncio.get_event_loop() так как оно не используется
+
 
 @route.post("/run_parser/")
 async def run_parser(request: ParserRequest):
@@ -77,6 +80,7 @@ async def get_fb_logs():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading log file: {str(e)}")
 
+
 @route.get("/get-game/{site}/{league}/{opponent_0}/{opponent_1}")
 async def get_game(
         site: str,
@@ -114,6 +118,107 @@ async def get_game(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@route.get("/get-league-games/{league}")
+async def get_league_games(
+        league: str,
+) -> dict:
+    """
+     Получает данные всех игр по лиге.
+
+     Args:
+         league (str): Название лиги.
+
+     Returns:
+         dict: Данные всех актуальных игр лиги.
+
+    """
+    try:
+        redis_client = RedisClient()
+        await redis_client.connect()
+
+        # Формируем ключ в нижнем регистре
+        key_akty = f"akty.com_all_data, {league.lower()}"
+        key_fb = f"fb.com_all_data, {league.lower()}"
+
+        # Получаем данные всех игр лиги из Redis
+        data_akty = await redis_client.get_last_items(key_akty, count=1800)
+        data_fb = await redis_client.get_last_items(key_fb, count=1800)
+
+        # Выбираем только актуальные матчи
+        data_akty_val = await validate_data(data_akty)
+        data_fb_val = await validate_data(data_fb)
+
+        # Выбираем матчи идущие в лиге
+        akty_matches = set(record['match'] for record in data_akty_val)
+        fb_matches = set(record['match'] for record in data_fb_val)
+        league_data = {
+            'ob': list(akty_matches),
+            'fb': list(fb_matches)
+        }
+
+        return {league: league_data}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@route.get("/get-game-bets/{site}/{league}")
+async def get_game_bets(
+        site: str,
+        league: str,
+        match: str = None,
+        bet: str = None
+) -> dict:
+    """
+     Получает данные о коэффициентах игры по составному ключу.
+
+     Args:
+         site (str): Сайт, откуда пришли данные.
+         league (str): Название лиги.
+         match (str, optional): Название матча. Если не указан, получает данные по всем матчам лиги.
+         bet (str, optional): Коэфф. (total_bet_0/total_bet_1). Если не указан, получает данные по всем коэфф. матча.
+
+     Returns:
+         dict: Данные игры или сообщение об ошибке, если данные не найдены.
+
+    """
+    try:
+        redis_client = RedisClient()
+        await redis_client.connect()
+
+        # Формируем ключ в нижнем регистре
+        key = f"{site.lower()}_all_data, {league.lower()}"
+
+        # Получаем данные всех матчей лиги из Redis
+        data = await redis_client.get_last_items(key, count=1800)
+
+        if not data:
+            raise HTTPException(status_code=404, detail=f"Информация по лиге {key} не найдена")
+
+        # Выбираем только актуальные матчи
+        data_val = await validate_data(data)
+
+        # Если запрошен конкретный матч лиги, получаем данные по этому матчу
+        if match:
+            match_data = [record for record in data_val if record['match'] == match]
+
+            if not match_data:
+                raise HTTPException(status_code=404, detail=f"Игра {match} не найдена в лиге {key}")
+            # Если запрошены коэффициенты, получаем по ним данные
+            if bet:
+                handicap = f"handicap_point_{bet[-1]}"
+                bets = {record['server_time']: [record[bet], record[handicap]] for record in match_data}
+                return {match: bets}
+
+            return {"game": match_data}
+
+        return {"games": data_val}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @route.post("/update-token/")
 async def update_token(new_token: str):
@@ -160,3 +265,31 @@ async def update_token(new_token: str):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error updating token: {str(e)}")
+
+
+async def validate_data(data: list) -> list:
+    """
+    Фильтрация актуальных матчей.
+
+    Args:
+        data (list): Список данных всех матчей лиги.
+
+    Returns:
+          validated_data (list): Список данных актуальных матчей лиги.
+    """
+    try:
+
+        curr_date = date.today().strftime("%Y-%m-%d")
+        matches_today = [record for record in data if record['match_date'] == curr_date]
+
+        curr_time = datetime.now()
+        check_time = curr_time - timedelta(minutes=6)
+        check_time = check_time.strftime("%H:%M:%S")
+
+        expired_matches = [match['match'] for match in matches_today if match['is_ended_soon'] and check_time > match['server_time']]
+        validated_data = [match for match in matches_today if match['match'] not in set(expired_matches)]
+
+        return validated_data
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
