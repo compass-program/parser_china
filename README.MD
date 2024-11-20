@@ -25,6 +25,18 @@ source .venv/bin/activate  # для Linux/MacOS
 ```bash
 pip install -r requirements.txt
 ```
+### 3.1 Инициализация базы данных Postgres
+Проведите миграции:
+```bash
+alembic init alembic
+alembic revision --autogenerate -m "init_db"
+alembic upgrade head
+```
+В таблицу лиг, установить значения нужных лиг:
+```bash
+chmod +x scripts/add_league_entries.sh
+scripts/add_league_entries.sh
+```
 ### 4. Установка и запуск Redis
 Если у вас еще не установлен Redis, следуйте инструкциям:
 

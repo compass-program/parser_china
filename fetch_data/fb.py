@@ -16,7 +16,10 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support import expected_conditions as EC
+from sqlalchemy import select, insert
 from app.logging import setup_logger
+from app.models import coefficient, match
+from transfer_data.database import db_connection
 from transfer_data.redis_client import RedisClient
 from transfer_data.telegram_bot import send_message_to_telegram
 from scripts.translate_cash_load import save_translate_cash, load_translate_cash
@@ -75,6 +78,7 @@ class OddsFetcher:
         self.ended_games = {}
         self.connection_error_count = 0
         self.max_connection_errors = 5
+        self.history_data = []
 
     async def get_driver(
             self,
@@ -155,6 +159,94 @@ class OddsFetcher:
             raise Exception(
                 "Не удалось загрузить страницу без элемента загрузки.")
 
+    async def add_to_history(self, data: dict):
+        """
+        Добавляет данные в историю.
+
+        Args:
+            data (dict): Словарь с данными для сохранения.
+        """
+        try:
+            if len(self.history_data) >= 25:
+                matches = set()
+                existing_data = self.history_data
+                for item in existing_data:
+                    matches.add((item['match'], item['league']))
+                await self.write_to_db(existing_data, matches)
+                self.history_data = []
+            else:
+                self.history_data.append(data)
+
+        except Exception as e:
+            await self.send_to_logs(f'Ошибка при сохранении данных в list(history_data): {str(e)}')
+
+    @db_connection
+    async def write_to_db(
+            self,
+            data: list,
+            matches: set,
+            session
+    ):
+        """
+        Сохраняет данные в базу данных.
+
+        Args:
+            data (list): Список словарей с данными для сохранения.
+            matches (set): Множество пар (игра, лига) для сохранения в базу.
+            session : Сессия для работы с базой данных.
+        """
+        leagues_id = {
+            "ipbl pro division": 1,
+            "ipbl pro division women": 2,
+            "rocket basketball league": 3,
+            "rocket basketball league women": 4,
+        }
+        try:
+            matches_id = {}
+            try:
+                for match_name, league_name in matches:
+                    query = select(match.c.id).where((match.c.name == match_name) & (match.c.bookmaker == 'fb') & (match.c.league_id == leagues_id[league_name]))
+                    result = await session.execute(query)
+                    check = result.mappings().all()
+                    if check:
+                        matches_id[match_name] = check[0]['id']
+                    else:
+                        query = insert(match).values(name=match_name, league_id=leagues_id[league_name], bookmaker="fb")
+                        result = await session.execute(query)
+                        new_id, = result.inserted_primary_key
+                        matches_id[match_name] = new_id
+                        await session.commit()
+
+            except Exception as e:
+                await self.send_to_logs(f'Ошибка при сохранении матча: {str(e)}')
+
+            try:
+                for item in data:
+                    stmt = insert(coefficient).values(
+                        match_id=matches_id[item['match']],
+                        score_game=item['score_game'],
+                        total_point=item['total_point'],
+                        total_bet_0=str(item['total_bet_0']),
+                        total_bet_1=str(item['total_bet_1']),
+                        handicap_bet_0=str(item['handicap_bet_0']),
+                        handicap_bet_1=str(item['handicap_bet_1']),
+                        handicap_point_0=item['handicap_point_0'],
+                        handicap_point_1=item['handicap_point_1'],
+                        time_game=item['time_game'],
+                        server_time=item['server_time'],
+                    )
+                    result = await session.execute(stmt)
+                    check, = result.inserted_primary_key
+                    await session.commit()
+                    if not check:
+                        await self.send_to_logs('Нет отправленных данных')
+
+            except Exception as e:
+                await self.send_to_logs(f'Ошибка при сохранении коэффициентов: {str(e)}')
+
+        except Exception as e:
+            await self.send_to_logs(f'Ошибка при сохранении данных в базу данных: {str(e)}')
+
     async def save_games(self, data: dict, liga_name: str):
         """
         Сохраняет игры по отдельным ключам в Redis.
@@ -192,24 +284,17 @@ class OddsFetcher:
             data_rate['server_time'] = data.get('server_time', '')
             data_rate['time_game'] = data.get('time_game', '')
             json_data = json.dumps(data_rate, ensure_ascii=False)
-            # data_rate_match = data_rate.copy()
-            # day = date.today().strftime("%Y-%m-%d")
-            # data_rate_match['match'] = f"{opponent_0.lower()}:{opponent_1.lower()}"
-            # data_rate_match['match_date'] = day
-            # pattern = r"^IV 0[1-3]:\d{2}$"
-            # if re.match(pattern, data_rate_match["time_game"]):
-            #     data_rate_match['is_ended_soon'] = True
-            # else:
-            #     data_rate_match['is_ended_soon'] = False
-            # json_all_data = json.dumps(data_rate_match, ensure_ascii=False)
-            # key_for_league_data = f"fb.com_all_data, {liga_name.lower()}"
+            data_rate_match = copy.deepcopy(data_rate)
+            data_rate_match['score_game'] = data.get('score_game')
+            data_rate_match['match'] = f"{opponent_0.lower()}-{opponent_1.lower()}"
+            data_rate_match['league'] = liga_name.lower()
+            await self.add_to_history(data_rate_match)
             key_for_all_data = (f"fb.com_all_data, {liga_name.lower()}, "
                             f"{opponent_0.lower()}, {opponent_1.lower()}")
             key_for_save = (f"fb.com, {liga_name.lower()}, "
                    f"{opponent_0.lower()}, {opponent_1.lower()}")
             if not self.debug:
                 await self.redis_client.add_to_list(key_for_all_data, json_data)
-                # await self.redis_client.add_to_list(key_for_league_data, json_all_data, max_len=1800)
                 if is_save:
                     await self.redis_client.add_to_list(
                         key_for_save,
