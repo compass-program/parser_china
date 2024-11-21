@@ -28,7 +28,6 @@ pip install -r requirements.txt
 ### 3.1 Инициализация базы данных Postgres
 Проведите миграции:
 ```bash
-alembic init alembic
 alembic revision --autogenerate -m "init_db"
 alembic upgrade head
 ```
