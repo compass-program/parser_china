@@ -6,7 +6,7 @@ import dotenv
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-
+from decimal import Decimal
 from services_app.tasks import parse_some_data
 from app.schema import ParserRequest, ResponseMatch
 from transfer_data.database import get_async_session
@@ -205,7 +205,79 @@ async def get_match_history(
         if not data:
             raise HTTPException(status_code=404, detail="not found")
 
-        return {"history": data}
+        return {"history": data[::-1]}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@route.get("/get-bet/")
+async def get_bet(
+        league_name: str,
+        match_name: str,
+        bookmaker: str,
+        bet_filter: str,
+        bet_type: str,
+        session: AsyncSession = Depends(get_async_session)
+) -> dict:
+    """
+    Эндпоинт для получения истории коэффициента.
+
+    Args:
+        league_name (str): Название лиги.
+        match_name (str): Название матча.
+        bookmaker (str): Название букмекера.
+        bet_filter (str): Значения фильтра для ставки exmpl('223.5', '+14.5', '-14,5').
+        bet_type (str): Тип ставки(total_bet0/1, handicap_bet0/1).
+        session (AsyncSession): Сессия для выполнения запросов к БД.
+
+    Returns:
+        dict: История коэффициента.
+    """
+    try:
+        if bet_type.startswith('total'):
+            condition = 'total_point'
+        elif bet_type[-1] == '0':
+            condition = 'handicap_point_0'
+        else:
+            condition = 'handicap_point_1'
+
+        league_name = league_name.lower()
+        match_name = match_name.lower()
+        stmt = (
+            select(coefficient.c.server_time, getattr(coefficient.c, bet_type))
+            .select_from(coefficient)
+            .join(match, coefficient.c.match_id == match.c.id)
+            .join(league, match.c.league_id == league.c.id)
+            .filter(
+                league.c.name == league_name,
+                match.c.name == match_name,
+                match.c.bookmaker == bookmaker,
+                getattr(coefficient.c, condition) == bet_filter
+            )
+        )
+        result = await session.execute(stmt)
+        data = result.mappings().all()
+        if not data:
+            raise HTTPException(status_code=404, detail="not found")
+
+        val_data = []
+        prev_bet = None
+
+        for record in data:
+            res = dict(record)
+            curr_bet = Decimal(res[f'{bet_type}'])
+            if prev_bet is not None:
+                diff = curr_bet - prev_bet
+                if diff > 0:
+                    res['bet_diff'] = '+' + f'{diff}'
+                else:
+                    res['bet_diff'] = f'{diff}'
+                val_data.append(res)
+
+            prev_bet = curr_bet
+
+        return {"coeff_history": val_data[::-1]}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

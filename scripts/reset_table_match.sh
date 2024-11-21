@@ -8,13 +8,9 @@ else
     exit 1
 fi
 
-# SQL для добавления данных
+# SQL для очистки данных
 SQL_COMMAND="
-INSERT INTO league (id, name) VALUES
-(1, 'ipbl pro division'),
-(2, 'ipbl pro division women'),
-(3, 'rocket basketball league'),
-(4, 'rocket basketball league women');
+TRUNCATE TABLE match RESTART IDENTITY CASCADE;
 "
 
 # Экспортируем пароль для использования в psql
@@ -24,9 +20,9 @@ export PGPASSWORD="$DB_PASS"
 psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -c "$SQL_COMMAND"
 
 if [ $? -eq 0 ]; then
-    echo "Table 'league' has been init successfully."
+    echo "Table 'match' has been clear successfully."
 else
-    echo "Failed to init table 'league'."
+    echo "Failed to clear table 'match'."
 fi
 
 # Удаляем переменную окружения

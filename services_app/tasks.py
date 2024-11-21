@@ -1,4 +1,5 @@
 import asyncio
+import os
 import subprocess
 import time
 import urllib3
@@ -152,6 +153,11 @@ def check_and_start_parsers(is_first_run: bool = False):
         delete_celery_task_meta_keys()
         logger.info("Очистка всех данных в Redis.")
         subprocess.run(['redis-cli', 'FLUSHALL'], check=True)
+
+        # Очистка таблицы матчей в БД
+        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'scripts', 'reset_table_match.sh')
+        os.chmod(script_path, 0o755)
+        subprocess.run([script_path], check=True)
 
     inspect = current_app.control.inspect()
     active_tasks = inspect.active()  # Получаем активные задачи

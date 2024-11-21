@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 
 
 class ParserRequest(BaseModel):
@@ -34,4 +34,4 @@ class ResponseMatch(BaseModel):
     """
     Модель для ответа с информацией о матче
     """
-    history: List[MatchCoeff]
+    history: List[MatchCoeff | dict]
