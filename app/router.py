@@ -12,9 +12,13 @@ from app.schema import ParserRequest, ResponseMatch
 from transfer_data.database import get_async_session
 from transfer_data.redis_client import RedisClient
 from app.models import league, match, coefficient
+from app.logging import setup_logger
 
 route = APIRouter()
 # Удаляем loop = asyncio.get_event_loop() так как оно не используется
+
+# Настройка логгера
+logger = setup_logger('endpoints', 'endpoints_debug.log')
 
 
 @route.post("/run_parser/")
@@ -31,15 +35,18 @@ async def run_parser(request: ParserRequest):
     ]
     try:
         if request.parser_name not in parsers_name:
+            logger.info('Неверное название парсера')
             raise HTTPException(status_code=400, detail="Parser class not found")
 
         # Запускаем задачу Celery
         parse_some_data.delay(request.parser_name, *request.args, **request.kwargs)
+        logger.info('Parser is running')
 
         return {"status": "Parser is running", "parser": request.parser_name}
     except HTTPException as e:
         raise e
     except Exception as e:
+        logger.error(f'Ошибка: {str(e)}')
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -84,6 +91,26 @@ async def get_fb_logs():
         raise HTTPException(status_code=500, detail=f"Error reading log file: {str(e)}")
 
 
+@route.get("/logs/endpoints")
+async def get_endpoints_logs():
+    """
+    Эндпоинт для получения последних 50 строк из логов всех эндпоинтов.
+
+    :return: Содержимое последних 50 строк лог-файлов
+    """
+    log_file_path = 'logs/endpoints_debug.log'
+    try:
+        async with aiofiles.open(log_file_path, 'r') as log_file:
+            lines = await log_file.readlines()
+            # Получаем последние 50 строк
+            last_lines = lines[-50:]
+            return {"logs": last_lines}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Log file not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading log file: {str(e)}")
+
+
 @route.get("/get-game/{site}/{league}/{opponent_0}/{opponent_1}")
 async def get_game(
         site: str,
@@ -115,11 +142,14 @@ async def get_game(
         data = await redis_client.get_last_items(key)
 
         if not data:
+            logger.info('Данные не найдены в redis')
             raise HTTPException(status_code=404, detail=f"Игра {key} не найдена")
 
+        logger.info('Данные получены и отправлены')
         return {"games": data}
 
     except Exception as e:
+        logger.error(f'Ошибка: {str(e)}')
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -203,11 +233,14 @@ async def get_match_history(
         result = await session.execute(stmt)
         data = result.mappings().all()
         if not data:
+            logger.info('Данные не найдены в БД')
             raise HTTPException(status_code=404, detail="not found")
 
+        logger.info('Данные получены и отправлены')
         return {"history": data[::-1]}
 
     except Exception as e:
+        logger.error(f'Ошибка: {str(e)}')
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -260,6 +293,7 @@ async def get_bet(
         result = await session.execute(stmt)
         data = result.mappings().all()
         if not data:
+            logger.info('Данные не найдены в БД')
             raise HTTPException(status_code=404, detail="not found")
 
         val_data = []
@@ -278,7 +312,9 @@ async def get_bet(
             val_data.append(res)
             prev_bet = curr_bet
 
+        logger.info('Данные получены и отправлены')
         return {"coeff_history": val_data[::-1]}
 
     except Exception as e:
+        logger.error(f'Ошибка: {str(e)}')
         raise HTTPException(status_code=500, detail=str(e))
