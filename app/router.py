@@ -274,8 +274,8 @@ async def get_bet(
                     res['bet_diff'] = '+' + f'{diff}'
                 else:
                     res['bet_diff'] = f'{diff}'
-                val_data.append(res)
 
+            val_data.append(res)
             prev_bet = curr_bet
 
         return {"coeff_history": val_data[::-1]}
