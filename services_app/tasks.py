@@ -155,9 +155,12 @@ def check_and_start_parsers(is_first_run: bool = False):
         subprocess.run(['redis-cli', 'FLUSHALL'], check=True)
 
         # Очистка таблицы матчей в БД
-        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'scripts', 'reset_table_match.sh')
-        os.chmod(script_path, 0o755)
-        subprocess.run([script_path], check=True)
+        try:
+            script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'scripts', 'reset_table_match.sh')
+            os.chmod(script_path, 0o755)
+            subprocess.run([script_path], check=True)
+        except Exception as e:
+            logger.error(f"Ошибка при очистке таблицы матчей: {e}")
 
     inspect = current_app.control.inspect()
     active_tasks = inspect.active()  # Получаем активные задачи
