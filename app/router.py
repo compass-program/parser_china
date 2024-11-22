@@ -226,7 +226,7 @@ async def get_bet(
     Args:
         league_name (str): Название лиги.
         match_name (str): Название матча.
-        bookmaker (str): Название букмекера.
+        bookmaker (str): Название букмекера('ob', 'fb').
         bet_filter (str): Значения фильтра для ставки exmpl('223.5', '+14.5', '-14,5').
         bet_type (str): Тип ставки(total_bet0/1, handicap_bet0/1).
         session (AsyncSession): Сессия для выполнения запросов к БД.
@@ -244,6 +244,7 @@ async def get_bet(
 
         league_name = league_name.lower()
         match_name = match_name.lower()
+        bookmaker = bookmaker.lower()
         stmt = (
             select(coefficient.c.server_time, getattr(coefficient.c, bet_type))
             .select_from(coefficient)
