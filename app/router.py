@@ -18,7 +18,7 @@ route = APIRouter()
 # Удаляем loop = asyncio.get_event_loop() так как оно не используется
 
 # Настройка логгера
-logger = setup_logger('db_requests', 'db_requests_debug.log')
+db_logger = setup_logger('db_requests', 'db_requests_debug.log')
 
 
 @route.post("/run_parser/")
@@ -139,14 +139,14 @@ async def get_game(
         data = await redis_client.get_last_items(key)
 
         if not data:
-            logger.info('Данные не найдены в redis')
+            db_logger.info('Данные не найдены в redis')
             raise HTTPException(status_code=404, detail=f"Игра {key} не найдена")
 
-        logger.info('Данные получены и отправлены')
+        db_logger.info('Данные получены и отправлены по запросу get-game')
         return {"games": data}
 
     except Exception as e:
-        logger.error(f'Ошибка: {str(e)}')
+        db_logger.error(f'Ошибка: {str(e)}')
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -230,14 +230,14 @@ async def get_match_history(
         result = await session.execute(stmt)
         data = result.mappings().all()
         if not data:
-            logger.info('Данные не найдены в БД')
+            db_logger.info('Данные не найдены в БД')
             raise HTTPException(status_code=404, detail="not found")
 
-        logger.info('Данные получены и отправлены')
+        db_logger.info('Данные получены и отправлены по запросу get-match-history')
         return {"history": data[::-1]}
 
     except Exception as e:
-        logger.error(f'Ошибка: {str(e)}')
+        db_logger.error(f'Ошибка: {str(e)}')
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -290,7 +290,7 @@ async def get_bet(
         result = await session.execute(stmt)
         data = result.mappings().all()
         if not data:
-            logger.info('Данные не найдены в БД')
+            db_logger.info('Данные не найдены в БД')
             raise HTTPException(status_code=404, detail="not found")
 
         val_data = []
@@ -309,9 +309,9 @@ async def get_bet(
             val_data.append(res)
             prev_bet = curr_bet
 
-        logger.info('Данные получены и отправлены')
+        db_logger.info('Данные получены и отправлены по запросу get-bet')
         return {"coeff_history": val_data[::-1]}
 
     except Exception as e:
-        logger.error(f'Ошибка: {str(e)}')
+        db_logger.error(f'Ошибка: {str(e)}')
         raise HTTPException(status_code=500, detail=str(e))

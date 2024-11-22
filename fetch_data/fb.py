@@ -40,8 +40,9 @@ SOCKETIO_URL = os.getenv('SOCKETIO_URL')
 SOCKET_KEY = os.getenv('SOCKET_KEY')
 HEADLESS = True
 
-# Настройка логгера
+# Настройка логгеров
 logger = setup_logger('fb', 'fb_debug.log')
+db_logger = setup_logger('db_requests', 'db_requests_debug.log')
 
 
 class OddsFetcher:
@@ -178,7 +179,7 @@ class OddsFetcher:
                 self.history_data.append(data)
 
         except Exception as e:
-            await self.send_to_logs(f'Ошибка при сохранении данных в list(history_data): {str(e)}')
+            await self.send_to_logs(f'FB: Ошибка при сохранении данных в list(history_data): {str(e)}', db=True)
 
     @db_connection
     async def write_to_db(
@@ -218,7 +219,7 @@ class OddsFetcher:
                         await session.commit()
 
             except Exception as e:
-                await self.send_to_logs(f'Ошибка при сохранении матча: {str(e)}')
+                await self.send_to_logs(f'FB: Ошибка при сохранении матча: {str(e)}', db=True)
 
             try:
                 for item in data:
@@ -239,13 +240,15 @@ class OddsFetcher:
                     check, = result.inserted_primary_key
                     await session.commit()
                     if not check:
-                        await self.send_to_logs('Нет отправленных данных')
+                        await self.send_to_logs('FB: Нет отправленных данных', db=True)
+
+                await self.send_to_logs('FB: Данные сохранены', db=True)
 
             except Exception as e:
-                await self.send_to_logs(f'Ошибка при сохранении коэффициентов: {str(e)}')
+                await self.send_to_logs(f'FB: Ошибка при сохранении коэффициентов: {str(e)}', db=True)
 
         except Exception as e:
-            await self.send_to_logs(f'Ошибка при сохранении данных в базу данных: {str(e)}')
+            await self.send_to_logs(f'FB: Ошибка при сохранении данных в базу данных: {str(e)}', db=True)
 
     async def save_games(self, data: dict, liga_name: str):
         """
@@ -406,15 +409,20 @@ class OddsFetcher:
 
     async def send_to_logs(
             self,
-            message: str
+            message: str,
+            db: bool = False
     ):
         """
         Логирование сообщений.
 
         :param message: Сообщение для логирования.
+        :param db: Сообщение для БД логгера (по умолчанию False).
         """
-        if not self.debug:
-            logger.info(message)
+        if db:
+            db_logger.info(message)
+        else:
+            if not self.debug:
+                logger.info(message)
         print(f"Logger: {message}")
 
     async def wait_for_element(

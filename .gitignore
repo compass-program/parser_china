@@ -57,7 +57,7 @@ images/screenshots
 *.mov
 *.wmv
 
-alembic/versions/*
+.alembic/versions/*
 */migrations
 # Игнорировать все файлы и папки в staticfiles
 staticfiles/*

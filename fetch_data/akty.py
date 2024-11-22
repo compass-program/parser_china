@@ -31,8 +31,9 @@ from scripts.translate_cash_load import load_translate_cash, save_translate_cash
 
 # Загрузка переменных окружения из .env файла
 load_dotenv()
-# Настройка логгера
+# Настройка логгеров
 logger = setup_logger('akty', 'akty_debug.log')
+db_logger = setup_logger('db_requests', 'db_requests_debug.log')
 LOCAL_DEBUG = 0
 LEAGUES = {
     'IPBL篮球专业组': 'IPBL Pro Division',
@@ -106,7 +107,7 @@ class FetchAkty:
                 self.history_data.append(data)
 
         except Exception as e:
-            await self.send_to_logs(f'Ошибка при сохранении данных в list(history_data): {str(e)}')
+            await self.send_to_logs(f'Akty: Ошибка при сохранении данных в list(history_data): {str(e)}', db=True)
 
     @db_connection
     async def write_to_db(
@@ -146,7 +147,7 @@ class FetchAkty:
                         await session.commit()
 
             except Exception as e:
-                await self.send_to_logs(f'Ошибка при сохранении матча: {str(e)}')
+                await self.send_to_logs(f'Akty: Ошибка при сохранении матча: {str(e)}', db=True)
 
             try:
                 for item in data:
@@ -167,13 +168,15 @@ class FetchAkty:
                     check, = result.inserted_primary_key
                     await session.commit()
                     if not check:
-                        await self.send_to_logs('Нет отправленных данных')
+                        await self.send_to_logs('Akty: Нет отправленных данных', db=True)
+
+                await self.send_to_logs('Akty: Данные сохранены', db=True)
 
             except Exception as e:
-                await self.send_to_logs(f'Ошибка при сохранении коэффициентов: {str(e)}')
+                await self.send_to_logs(f'Akty: Ошибка при сохранении коэффициентов: {str(e)}', db=True)
 
         except Exception as e:
-            await self.send_to_logs(f'Ошибка при сохранении данных в базу данных: {str(e)}')
+            await self.send_to_logs(f'Akty: Ошибка при сохранении данных в базу данных: {str(e)}', db=True)
 
     async def save_games(self, data: dict, liga_name: str):
         """
@@ -431,14 +434,19 @@ class FetchAkty:
     async def send_to_logs(
             self,
             message: str,
+            db: bool = False,
     ):
         """
         Отправляет сообщение в логгер и выводит его в консоль.
 
         :param message: Сообщение для логгера.
+        :param db: Сообщение для БД логгера (по умолчанию False).
         """
-        if not self.debug:
-            logger.info(message)
+        if db:
+            db_logger.info(message)
+        else:
+            if not self.debug:
+                logger.info(message)
         print(f"Logger: {message}")
 
     async def check_changed_dict(
