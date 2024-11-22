@@ -241,8 +241,6 @@ class OddsFetcher:
                     if not check:
                         await self.send_to_logs('Нет отправленных данных')
 
-                await self.send_to_logs('Данные сохранены')
-
             except Exception as e:
                 await self.send_to_logs(f'Ошибка при сохранении коэффициентов: {str(e)}')
 

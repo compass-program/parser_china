@@ -18,7 +18,7 @@ route = APIRouter()
 # Удаляем loop = asyncio.get_event_loop() так как оно не используется
 
 # Настройка логгера
-logger = setup_logger('endpoints', 'endpoints_debug.log')
+logger = setup_logger('db_requests', 'db_requests_debug.log')
 
 
 @route.post("/run_parser/")
@@ -35,18 +35,15 @@ async def run_parser(request: ParserRequest):
     ]
     try:
         if request.parser_name not in parsers_name:
-            logger.info('Неверное название парсера')
             raise HTTPException(status_code=400, detail="Parser class not found")
 
         # Запускаем задачу Celery
         parse_some_data.delay(request.parser_name, *request.args, **request.kwargs)
-        logger.info('Parser is running')
 
         return {"status": "Parser is running", "parser": request.parser_name}
     except HTTPException as e:
         raise e
     except Exception as e:
-        logger.error(f'Ошибка: {str(e)}')
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -91,14 +88,14 @@ async def get_fb_logs():
         raise HTTPException(status_code=500, detail=f"Error reading log file: {str(e)}")
 
 
-@route.get("/logs/endpoints")
-async def get_endpoints_logs():
+@route.get("/logs/db_requests")
+async def get_db_requests_logs():
     """
     Эндпоинт для получения последних 50 строк из логов всех эндпоинтов.
 
     :return: Содержимое последних 50 строк лог-файлов
     """
-    log_file_path = 'logs/endpoints_debug.log'
+    log_file_path = 'logs/db_requests_debug.log'
     try:
         async with aiofiles.open(log_file_path, 'r') as log_file:
             lines = await log_file.readlines()
