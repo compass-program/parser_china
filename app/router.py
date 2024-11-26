@@ -237,7 +237,7 @@ async def get_match_history(
         return {"history": data[::-1]}
 
     except Exception as e:
-        db_logger.error(f'Ошибка: {str(e)}')
+        db_logger.error(f'Ошибка при обращении к БД: {str(e)}')
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -293,6 +293,11 @@ async def get_bet(
             db_logger.info('Данные не найдены в БД')
             raise HTTPException(status_code=404, detail="not found")
 
+    except Exception as e:
+        db_logger.error(f'Ошибка во время обращения к БД: {str(e)}')
+        raise HTTPException(status_code=500, detail=str(e))
+
+    try:
         val_data = []
         prev_bet = None
 
@@ -313,5 +318,5 @@ async def get_bet(
         return {"coeff_history": val_data[::-1]}
 
     except Exception as e:
-        db_logger.error(f'Ошибка: {str(e)}')
+        db_logger.error(f'Ошибка при обработке данных, полученных из БД: {str(e)}')
         raise HTTPException(status_code=500, detail=str(e))

@@ -681,32 +681,46 @@ class FetchAkty:
             return ''
         return hashlib.md5(str(soup).encode('utf-8')).hexdigest()
 
-    async def click_element_by_text(self, card) -> None:
+    async def click_element_by_text(self, card, league_name) -> None:
         """
         Нажимает на элемент для изменения его видимости,
         если текущий элемент не находится в нужном состоянии.
 
         :param card: HTML-элемент, содержащий информацию о лиге.
+        :param league_name: Название лиги, для которой нужно изменить видимость.
         """
         try:
             # Проверяем стиль элемента card для определения текущего состояния
             if 'style' in card.attrs:
                 card_style = card['style']
 
-                # Если есть скрытые элементы (высота 37px), нажимаем кнопку для изменения состояния
+                # Блок кода ниже - возможное решение проблемы с исчезновением лиг
                 if re.search(r'height:\s*37px;', card_style):
                     spoiler_button = await self.wait_for_element(
-                        By.CSS_SELECTOR,
-                        "div[class*='match-type']",
+                        By.XPATH,
+                        f"//div[@class='list-card-wrap v-scroll-item relative-position sticky-wrap new-pc-match-list-card'][.//span[contains(text(), {league_name})]]",
                         timeout=30)
-                    current_style = spoiler_button.get_attribute('style')
 
-                    # Нажимаем на кнопку, если она в состоянии скрытия элементов
-                    if re.search(r'height:\s*37px;', current_style):
-                        spoiler_button.click()
-                        await asyncio.sleep(5)
-                        await self.send_to_logs(
-                            'Переключение видимости лиг произошло успешно')
+                    spoiler_button.click()
+                    await asyncio.sleep(5)
+                    await self.send_to_logs(
+                        'Переключение видимости лиг произошло успешно')
+                # конец возможного решения проблемы, далее изначальный вид алгоритма функции
+
+                # Если есть скрытые элементы (высота 37px), нажимаем кнопку для изменения состояния
+                # if re.search(r'height:\s*37px;', card_style):
+                #     spoiler_button = await self.wait_for_element(
+                #         By.CSS_SELECTOR,
+                #         "div[class*='match-type']",
+                #         timeout=30)
+                #     current_style = spoiler_button.get_attribute('style')
+                #
+                #     # Нажимаем на кнопку, если она в состоянии скрытия элементов
+                #     if re.search(r'height:\s*37px;', current_style):
+                #         spoiler_button.click()
+                #         await asyncio.sleep(5)
+                #         await self.send_to_logs(
+                #             'Переключение видимости лиг произошло успешно')
 
             # Если элементы уже раскрыты или отсутствует стиль, ничего не делаем
         except Exception as e:
@@ -749,7 +763,7 @@ class FetchAkty:
             if div_name_liga:
                 league_name = div_name_liga.get_text()
                 if league_name in target_leagues.keys():
-                    await self.click_element_by_text(card)
+                    await self.click_element_by_text(card, league_name)
             elif league_name and league_name in target_leagues.keys():
                 league_name = target_leagues[league_name]
                 list_mid_elements = card.find_all('div',
