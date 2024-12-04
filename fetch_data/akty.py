@@ -696,15 +696,16 @@ class FetchAkty:
 
                 # Блок кода ниже - возможное решение проблемы с исчезновением лиг
                 if re.search(r'height:\s*37px;', card_style):
-                    spoiler_button = await self.wait_for_element(
-                        By.XPATH,
-                        f"//div[@class='list-card-wrap v-scroll-item relative-position sticky-wrap new-pc-match-list-card'][.//span[contains(text(), {league_name})]]",
-                        timeout=30)
+                    xpath = f"//div[contains(@class, 'list-card-wrap v-scroll-item relative-position')]//span[contains(text(), '{league_name}')]/ancestor::div[contains(@class, 'list-card-wrap v-scroll-item relative-position')]"
 
-                    spoiler_button.click()
+                    target = await self.wait_for_element(
+                        By.XPATH,
+                        xpath,
+                        timeout=30
+                    )
+
+                    target.click()
                     await asyncio.sleep(5)
-                    await self.send_to_logs(
-                        'Переключение видимости лиг произошло успешно')
                 # конец возможного решения проблемы, далее изначальный вид алгоритма функции
 
                 # Если есть скрытые элементы (высота 37px), нажимаем кнопку для изменения состояния

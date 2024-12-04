@@ -7,7 +7,7 @@ from app.logging import setup_logger
 load_dotenv()
 
 # Настройка логгера
-logger = setup_logger('socketio', 'socketio_debug.log')
+logger = setup_logger('socketio', 'socketio_debug.log', backup_count=1)
 
 origins = [
     "http://api.parserchina.com",
@@ -77,6 +77,6 @@ async def message(sid: str, data: str):
     :param sid: Идентификатор сессии клиента.
     :param data: Данные, полученные от клиента.
     """
-    await send_to_logs(f"Получено сообщение от {sid}: {data}")
+    # await send_to_logs(f"Получено сообщение от {sid}: {data}")
     await sio.send(data)
 
