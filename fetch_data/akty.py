@@ -51,6 +51,9 @@ REDIS_URL = os.getenv('REDIS_URL')
 SOCKETIO_URL = os.getenv('SOCKETIO_URL')
 SOCKET_KEY = os.getenv('SOCKET_KEY')
 HEADLESS = True
+# Пути для работы с файлами
+REQUEST_FILE = 'request.txt'
+SCREENSHOT_FILE = 'screenshot.png'
 
 
 class FetchAkty:
@@ -481,20 +484,24 @@ class FetchAkty:
         """
         Авторизация на странице.
         """
-        await self.get_url(self.url)
-        login_input = await self.wait_for_element(By.CSS_SELECTOR,
-                                            "input[placeholder*='账号']",
-                                            timeout=60)
-        await asyncio.sleep(15)
-        login_input.send_keys(LOGIN)
-        password_input = await self.wait_for_element(By.CSS_SELECTOR,
+        try:
+            await self.get_url(self.url)
+            login_input = await self.wait_for_element(By.CSS_SELECTOR,
+                                                "input[placeholder*='账号']",
+                                                timeout=90)
+            await asyncio.sleep(15)
+            login_input.send_keys(LOGIN)
+            password_input = await self.wait_for_element(By.CSS_SELECTOR,
                                                "input[placeholder='密码']")
-        password_input.clear()
-        password_input.send_keys(PASSWORD)
-        await asyncio.sleep(3)
-        password_input.send_keys(Keys.ENTER)
-        password_input.send_keys(Keys.ENTER)
-        await self.send_to_logs('Авторизация успешно пройдена')
+            password_input.clear()
+            password_input.send_keys(PASSWORD)
+            await asyncio.sleep(3)
+            password_input.send_keys(Keys.ENTER)
+            password_input.send_keys(Keys.ENTER)
+            await self.send_to_logs('Авторизация успешно пройдена')
+        except Exception as e:
+            await self.send_to_logs(f"Ошибка авторизации: {e}")
+            self.driver.save_screenshot(f'screenshot_{str(e)}.png')
 
     async def translate_and_cache(self, text: str) -> str:
         """
@@ -796,11 +803,15 @@ class FetchAkty:
                         opponent_1_score = opponent_1_score_div.find(
                             'span').get_text() if opponent_1_score_div else ""
 
-                        bet_divs = list_mid_element.find_all('div', class_='handicap-col')
-                        handicap_bet_div = bet_divs[1].find_all('span',
-                                                                class_='highlight-odds')
-                        handicap_point_divs = bet_divs[1].find_all('div',
-                                                                   class_='handicap-value-text')
+                        try:
+                            bet_divs = list_mid_element.find_all('div', class_='handicap-col')
+                            handicap_bet_div = bet_divs[1].find_all('span',
+                                                                    class_='highlight-odds')
+                            handicap_point_divs = bet_divs[1].find_all('div',
+                                                                    class_='handicap-value-text')
+                        except Exception as e:
+                            await self.send_to_logs(f'Ошибка при извлечении ставок: {e}')
+                            continue
 
                         opponent_0_handicap_bet = handicap_bet_div[
                             0].get_text().replace("EU ", "") if len(handicap_bet_div) > 0 else ""
@@ -1017,6 +1028,24 @@ class FetchAkty:
     def __del__(self):
         asyncio.run(self.close())
 
+    async def request_check(self):
+        while True:
+            # Проверяем наличие запроса
+            if os.path.exists(REQUEST_FILE):
+                print("Запрос на создание скриншота получен.")
+                try:
+                    # Создаем скриншот
+                    self.driver.save_screenshot(SCREENSHOT_FILE)
+                    print(f"Скриншот сохранен в {SCREENSHOT_FILE}")
+                except Exception as e:
+                    print(f"Ошибка при создании скриншота: {e}")
+
+                # Удаляем файл-запрос
+                os.remove(REQUEST_FILE)
+
+            # Ждем перед следующим циклом
+            await asyncio.sleep(1)
+
     async def run(self, *args, **kwargs):
         """
         Запуск парсера с указанными параметрами и перезапуском при ошибках.
@@ -1048,7 +1077,11 @@ class FetchAkty:
                     await self.main_page()
                     await self.aggregator_page()
 
-                await self.monitor_leagues(leagues)
+                # await self.monitor_leagues(leagues)
+                await asyncio.gather(
+                    self.request_check(),
+                    self.monitor_leagues(leagues)
+                )
                 break
 
             except Exception as e:

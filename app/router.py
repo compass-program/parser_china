@@ -4,6 +4,7 @@ import aiofiles
 import subprocess
 import dotenv
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from decimal import Decimal
@@ -19,6 +20,10 @@ route = APIRouter()
 
 # Настройка логгера
 db_logger = setup_logger('db_requests', 'db_requests_debug.log')
+
+# Пути для работы с файлами
+REQUEST_FILE = 'request.txt'
+SCREENSHOT_FILE = 'screenshot.png'
 
 
 @route.post("/run_parser/")
@@ -320,3 +325,37 @@ async def get_bet(
     except Exception as e:
         db_logger.error(f'Ошибка при обработке данных, полученных из БД: {str(e)}')
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@route.get("/get-screenshot")
+async def get_screenshot(parser_name: str = None):
+    """
+    Эндпоинт запроса скриншота состояния браузера с конкретного парсера.
+
+    Args:
+        parser_name (str): название парсера('ob' или 'fb').
+
+    Returns:
+          dict: информация о создании скриншота.
+    """
+    try:
+        # Если файл запроса уже существует, не создаем новый запрос
+        if not os.path.exists(REQUEST_FILE):
+            await asyncio.to_thread(write_request_file, parser_name)
+
+        # Ожидание создания скриншота
+        for _ in range(10):  # Пытаемся максимум 10 раз (10 секунд ожидания)
+            if os.path.exists(SCREENSHOT_FILE):
+                # Отправляем файл клиенту
+                return FileResponse(SCREENSHOT_FILE, media_type="image/png")
+            await asyncio.sleep(1)  # Ждем 1 секунду перед следующей проверкой
+
+        return {"error": "file not found"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def write_request_file(parser_name: str):
+    """Записывает команду для парсера в файл."""
+    with open(REQUEST_FILE, 'w') as f:
+        f.write(f'capture_{parser_name}')  # Запись команды для парсера
