@@ -39,6 +39,9 @@ REDIS_URL = os.getenv('REDIS_URL')
 SOCKETIO_URL = os.getenv('SOCKETIO_URL')
 SOCKET_KEY = os.getenv('SOCKET_KEY')
 HEADLESS = True
+# Пути для работы с файлами
+REQUEST_FILE = 'request_fb.txt'
+SCREENSHOT_FILE = 'screenshot_fb.png'
 
 # Настройка логгеров
 logger = setup_logger('fb', 'fb_debug.log')
@@ -838,6 +841,20 @@ class OddsFetcher:
         """
         return f"{site}_{league}_{game['opponent_0']}_{game['opponent_1']}"
 
+    async def request_check(self):
+        # Проверяем наличие запроса
+        if os.path.exists(REQUEST_FILE):
+            print("Запрос на создание скриншота получен.")
+            try:
+                # Создаем скриншот
+                self.driver_fb.save_screenshot(SCREENSHOT_FILE)
+                print(f"Скриншот сохранен в {SCREENSHOT_FILE}")
+            except Exception as e:
+                print(f"Ошибка при создании скриншота: {e}")
+
+            # Удаляем файл-запрос
+            os.remove(REQUEST_FILE)
+
     async def close(self):
         if self.driver_fb:
             self.driver_fb.quit()
@@ -868,6 +885,7 @@ class OddsFetcher:
 
                 while True:
                     await self.collect_odds_data(leagues)
+                    await self.request_check()
                     await asyncio.sleep(1)  # Пауза между циклами сбора данных
             except Exception as e:
                 if self.driver_fb and self.driver_fb.session_id:

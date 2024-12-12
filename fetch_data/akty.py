@@ -52,8 +52,8 @@ SOCKETIO_URL = os.getenv('SOCKETIO_URL')
 SOCKET_KEY = os.getenv('SOCKET_KEY')
 HEADLESS = True
 # Пути для работы с файлами
-REQUEST_FILE = 'request.txt'
-SCREENSHOT_FILE = 'screenshot.png'
+REQUEST_FILE = 'request_ob.txt'
+SCREENSHOT_FILE = 'screenshot_ob.png'
 
 
 class FetchAkty:
@@ -1043,7 +1043,6 @@ class FetchAkty:
                 # Удаляем файл-запрос
                 os.remove(REQUEST_FILE)
 
-            # Ждем перед следующим циклом
             await asyncio.sleep(1)
 
     async def run(self, *args, **kwargs):

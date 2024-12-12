@@ -22,8 +22,8 @@ route = APIRouter()
 db_logger = setup_logger('db_requests', 'db_requests_debug.log')
 
 # Пути для работы с файлами
-REQUEST_FILE = 'request.txt'
-SCREENSHOT_FILE = 'screenshot.png'
+# REQUEST_FILE = 'request.txt'
+# SCREENSHOT_FILE = 'screenshot.png'
 
 
 @route.post("/run_parser/")
@@ -327,8 +327,8 @@ async def get_bet(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@route.get("/get-screenshot")
-async def get_screenshot(parser_name: str = None):
+@route.get("/get-screenshot", response_class=FileResponse)
+async def get_screenshot(parser_name: str):
     """
     Эндпоинт запроса скриншота состояния браузера с конкретного парсера.
 
@@ -336,26 +336,31 @@ async def get_screenshot(parser_name: str = None):
         parser_name (str): название парсера('ob' или 'fb').
 
     Returns:
-          dict: информация о создании скриншота.
+        dict: информация о создании скриншота.
     """
+    if parser_name.lower() not in ('ob', 'fb'):
+        raise HTTPException(status_code=400, detail="parser_name must be 'ob' or 'fb'")
+
+    request_file = f'request_{parser_name.lower()}.txt'
+    screenshot_file = f'screenshot_{parser_name.lower()}.png'
     try:
         # Если файл запроса уже существует, не создаем новый запрос
-        if not os.path.exists(REQUEST_FILE):
-            await asyncio.to_thread(write_request_file, parser_name)
+        if not os.path.exists(request_file):
+            await asyncio.to_thread(write_request_file, request_file)
 
         # Ожидание создания скриншота
         for _ in range(10):  # Пытаемся максимум 10 раз (10 секунд ожидания)
-            if os.path.exists(SCREENSHOT_FILE):
-                # Отправляем файл клиенту
-                return FileResponse(SCREENSHOT_FILE, media_type="image/png")
-            await asyncio.sleep(1)  # Ждем 1 секунду перед следующей проверкой
+            if os.path.exists(screenshot_file):
+                return FileResponse(screenshot_file, media_type="image/png")
+            await asyncio.sleep(1)
 
-        return {"error": "file not found"}
+        raise HTTPException(status_code=404, detail="file not found")
+        # return {"error": "file not found"}
     except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-def write_request_file(parser_name: str):
-    """Записывает команду для парсера в файл."""
-    with open(REQUEST_FILE, 'w') as f:
-        f.write(f'capture_{parser_name}')  # Запись команды для парсера
+def write_request_file(file: str):
+    """Создает файл запроса."""
+    with open(file, 'w') as f:
+        pass
