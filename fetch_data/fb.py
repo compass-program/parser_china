@@ -485,6 +485,13 @@ class OddsFetcher:
                     basketball_button.click()
                     await self.send_to_logs(
                         'Успешный переход в баскетбольную лигу')
+                    # Скролим вниз блок с лигами
+                    await asyncio.sleep(2)
+                    element = await self.wait_for_element(By.CLASS_NAME, 'home-match-box.home-match-type', timeout=5)
+                    # element = self.driver_fb.find_element(By.CLASS_NAME, 'home-match-box.home-match-type')
+                    if element:
+                        self.driver_fb.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", element)
+                        await asyncio.sleep(1)
                     return
 
                 # Если кнопка не найдена, перезагружаем страницу
