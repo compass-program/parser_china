@@ -104,7 +104,8 @@ class FetchAkty:
                 existing_data = self.history_data
                 for item in existing_data:
                     matches.add((item['match'], item['league']))
-                await self.write_to_db(existing_data, matches)
+                if not self.debug:
+                    await self.write_to_db(existing_data, matches)
                 self.history_data = []
             else:
                 self.history_data.append(data)
@@ -632,6 +633,43 @@ class FetchAkty:
             await self.aggregator_page()
 
         await self.send_to_logs('Успешный переход в раздел баскетбола')
+        # Алгоритм проверки избранных лиг
+        leagues_block = await self.wait_for_element(
+            By.CSS_SELECTOR, 'div[data-v-07ec8f5f].layout_main_center',
+            timeout=60
+        )
+
+        await self.send_to_logs('Проверям кол-во матчей в избранном')
+        attempts = 0
+        check_fav_matches = True
+
+        while check_fav_matches:
+            fav_element = leagues_block.find_element(
+                By.CSS_SELECTOR,
+                'div.btn-wrap.collect-btn.flex-1.h-full.yb-flex-center.cursor-pointer[title="我的收藏"]'
+            )
+            await asyncio.sleep(3)
+            matches = leagues_block.find_element(By.CSS_SELECTOR, 'span[data-v-a330f3ca]')
+            check = matches.text
+            print(f'Нашли кол-во матчей в избранном: {check}')
+            if check != '0':  #  needs != '0'
+                check_fav_matches = False
+                fav_element.click()
+                await self.send_to_logs('Нажали на кнопку избранное')
+                await asyncio.sleep(3)
+            else:
+                print('Избранных матчей нет')
+                if attempts >= 20:  #  needs 20
+                    attempts = 0
+                    await self.send_to_logs('Избранных матчей нет в течение долгого времени, обновляем блок матчей')
+                    refresh_button = leagues_block.find_element(
+                        By.CSS_SELECTOR, 'div[data-v-b6d9570b][class="refreh-container"]'
+                    )
+                    refresh_button.click()
+                    await asyncio.sleep(10)
+                else:
+                    attempts += 1
+                    await asyncio.sleep(60)  #  needs 60
 
     async def change_zoom(
             self
