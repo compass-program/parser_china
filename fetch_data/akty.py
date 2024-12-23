@@ -639,7 +639,7 @@ class FetchAkty:
             timeout=60
         )
 
-        await self.send_to_logs('Проверям кол-во матчей в избранном')
+        await self.send_to_logs('Проверяем кол-во матчей в избранном')
         attempts = 0
         check_fav_matches = True
 
@@ -1030,10 +1030,11 @@ class FetchAkty:
         """
         previous_hash = await self.get_container_hash()
         unchanged_count = 0
-        max_unchanged_checks = 3600
+        max_unchanged_checks = 7200
 
         while True:
             await asyncio.sleep(check_interval)
+            await self.request_check()
             current_hash = await self.get_container_hash()
 
             if current_hash != previous_hash:
@@ -1067,21 +1068,18 @@ class FetchAkty:
         asyncio.run(self.close())
 
     async def request_check(self):
-        while True:
-            # Проверяем наличие запроса
-            if os.path.exists(REQUEST_FILE):
-                print("Запрос на создание скриншота получен.")
-                try:
-                    # Создаем скриншот
-                    self.driver.save_screenshot(SCREENSHOT_FILE)
-                    print(f"Скриншот сохранен в {SCREENSHOT_FILE}")
-                except Exception as e:
-                    print(f"Ошибка при создании скриншота: {e}")
+        # Проверяем наличие запроса
+        if os.path.exists(REQUEST_FILE):
+            print("Запрос на создание скриншота получен.")
+            try:
+                # Создаем скриншот
+                self.driver.save_screenshot(SCREENSHOT_FILE)
+                print(f"Скриншот сохранен в {SCREENSHOT_FILE}")
+            except Exception as e:
+                print(f"Ошибка при создании скриншота: {e}")
 
-                # Удаляем файл-запрос
-                os.remove(REQUEST_FILE)
-
-            await asyncio.sleep(1)
+            # Удаляем файл-запрос
+            os.remove(REQUEST_FILE)
 
     async def run(self, *args, **kwargs):
         """
@@ -1114,11 +1112,11 @@ class FetchAkty:
                     await self.main_page()
                     await self.aggregator_page()
 
-                # await self.monitor_leagues(leagues)
-                await asyncio.gather(
-                    self.request_check(),
-                    self.monitor_leagues(leagues)
-                )
+                await self.monitor_leagues(leagues)
+
+                if self.restart_required:
+                    raise TimeoutException('Данные матчей не найдены')
+
                 break
 
             except Exception as e:
