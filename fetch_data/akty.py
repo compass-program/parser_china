@@ -99,7 +99,7 @@ class FetchAkty:
             data (dict): Словарь с данными для сохранения.
         """
         try:
-            if len(self.history_data) >= 25:
+            if len(self.history_data) >= 18:
                 matches = set()
                 existing_data = self.history_data
                 for item in existing_data:
@@ -635,7 +635,7 @@ class FetchAkty:
         await self.send_to_logs('Успешный переход в раздел баскетбола')
         # Алгоритм проверки избранных лиг
         leagues_block = await self.wait_for_element(
-            By.CSS_SELECTOR, 'div[data-v-07ec8f5f].layout_main_center',
+            By.CSS_SELECTOR, 'div[data-v-b1da9a1f].layout_main_center',
             timeout=60
         )
 
@@ -649,7 +649,7 @@ class FetchAkty:
                 'div.btn-wrap.collect-btn.flex-1.h-full.yb-flex-center.cursor-pointer[title="我的收藏"]'
             )
             await asyncio.sleep(3)
-            matches = leagues_block.find_element(By.CSS_SELECTOR, 'span[data-v-a330f3ca]')
+            matches = fav_element.find_element(By.TAG_NAME, 'span')
             check = matches.text
             print(f'Нашли кол-во матчей в избранном: {check}')
             if check != '0':  #  needs != '0'
@@ -663,7 +663,7 @@ class FetchAkty:
                     attempts = 0
                     await self.send_to_logs('Избранных матчей нет в течение долгого времени, обновляем блок матчей')
                     refresh_button = leagues_block.find_element(
-                        By.CSS_SELECTOR, 'div[data-v-b6d9570b][class="refreh-container"]'
+                        By.CSS_SELECTOR, 'div[class="refreh-container"]'
                     )
                     refresh_button.click()
                     await asyncio.sleep(10)
@@ -798,27 +798,31 @@ class FetchAkty:
         cards = scroll_content.find_all(
             'div',
             class_=re.compile(
-                'list-card-wrap v-scroll-item relative-position'),
+                'match-list-card v-scroll-item relative-position'),
             recursive=False
         )
 
         league_name = None
-        for card in cards:
-            div_name_liga = card.find('span',
+        if not cards:
+            return leagues_data
+        new_cards = cards[1:]
+
+        for i in range(0, len(new_cards), 2):
+            div_name_liga = new_cards[i].find('span',
                                       class_="ellipsis allow-user-select")
             if div_name_liga:
                 league_name = div_name_liga.get_text()
-                if league_name in target_leagues.keys():
-                    await self.click_element_by_text(card, league_name)
-            elif league_name and league_name in target_leagues.keys():
+                # if league_name in target_leagues.keys():
+                    # await self.click_element_by_text(card, league_name)
+            if league_name in target_leagues.keys():
                 league_name = target_leagues[league_name]
-                list_mid_elements = card.find_all('div',
+                list_mid_elements = new_cards[i + 1].find_all('div',
                                                   class_='c-match-item')
                 for list_mid_element in list_mid_elements:
                     opponent_0 = list_mid_element.find('div',
-                                                       class_='row-item team-item')
+                                                       class_='row-item team-item team-home')
                     opponent_1 = list_mid_element.find('div',
-                                                       class_='row-item team-item soon')
+                                                       class_='row-item team-item team-away')
 
                     if opponent_0 and opponent_1:
                         opponent_0_name = opponent_0.find('div',
