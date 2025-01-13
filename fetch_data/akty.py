@@ -635,7 +635,7 @@ class FetchAkty:
         await self.send_to_logs('Успешный переход в раздел баскетбола')
         # Алгоритм проверки избранных лиг
         leagues_block = await self.wait_for_element(
-            By.CSS_SELECTOR, 'div[data-v-b1da9a1f].layout_main_center',
+            By.CSS_SELECTOR, 'div.layout_main_center',
             timeout=60
         )
 
