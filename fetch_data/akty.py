@@ -639,37 +639,22 @@ class FetchAkty:
             timeout=60
         )
 
-        await self.send_to_logs('Проверяем кол-во матчей в избранном')
-        attempts = 0
-        check_fav_matches = True
+        await self.send_to_logs('Поиск кнопки избранного')
+        hide_scroll_bar = leagues_block.find_element(By.CSS_SELECTOR, "div.hide-scrollbar")
+        hide_scroll_bar_elems = hide_scroll_bar.find_elements(
+            By.CSS_SELECTOR,
+            "div[class*='item yb-flex-center']"
+        )
 
-        while check_fav_matches:
-            fav_element = leagues_block.find_element(
-                By.CSS_SELECTOR,
-                'div.btn-wrap.collect-btn.flex-1.h-full.yb-flex-center.cursor-pointer[title="我的收藏"]'
-            )
+        if hide_scroll_bar_elems:
+            fav_element = hide_scroll_bar_elems[1]
             await asyncio.sleep(3)
-            matches = fav_element.find_element(By.TAG_NAME, 'span')
-            check = matches.text
-            print(f'Нашли кол-во матчей в избранном: {check}')
-            if check != '0':  #  needs != '0'
-                check_fav_matches = False
-                fav_element.click()
-                await self.send_to_logs('Нажали на кнопку избранное')
-                await asyncio.sleep(3)
-            else:
-                print('Избранных матчей нет')
-                if attempts >= 20:  #  needs 20
-                    attempts = 0
-                    await self.send_to_logs('Избранных матчей нет в течение долгого времени, обновляем блок матчей')
-                    refresh_button = leagues_block.find_element(
-                        By.CSS_SELECTOR, 'div[class="refreh-container"]'
-                    )
-                    refresh_button.click()
-                    await asyncio.sleep(10)
-                else:
-                    attempts += 1
-                    await asyncio.sleep(60)  #  needs 60
+            fav_element.click()
+            await self.send_to_logs('Нажали на кнопку избранное')
+            await asyncio.sleep(5)
+
+        else:
+            raise NoSuchElementException('Не найдена кнопка избранного')
 
     async def change_zoom(
             self
