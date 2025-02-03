@@ -805,9 +805,9 @@ class FetchAkty:
                                                   class_='c-match-item')
                 for list_mid_element in list_mid_elements:
                     opponent_0 = list_mid_element.find('div',
-                                                       class_='row-item team-item team-home')
+                                                       class_='row-item team-item team-home EU')
                     opponent_1 = list_mid_element.find('div',
-                                                       class_='row-item team-item team-away')
+                                                       class_='row-item team-item team-away EU')
 
                     if opponent_0 and opponent_1:
                         opponent_0_name = opponent_0.find('div',

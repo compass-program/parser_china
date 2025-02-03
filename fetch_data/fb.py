@@ -927,6 +927,31 @@ class OddsFetcher:
                 await asyncio.sleep(90)
                 continue
 
+    # async def test_kalo(self):
+    #     self.driver_fb.get('https://test.f66b88sport.com/pc/index.html#/?type=3&sportId=3')
+    #     await asyncio.sleep(15)
+    #     center_element = await self.wait_for_element(By.CLASS_NAME, "home-match-box")
+    #     await asyncio.sleep(10)
+    #     self.driver_fb.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", center_element)
+    #     await asyncio.sleep(2)
+    #     self.action.move_to_element(center_element).perform()
+    #     await asyncio.sleep(2)
+    #     print('Ищем кнопки листания страниц')
+    #     page_block = await self.wait_for_element(By.CSS_SELECTOR, 'div.home-matches-pages__main')
+    #     pages = page_block.find_elements(By.CSS_SELECTOR, "span[class*='q-btn__content text-center']")
+    #     button = pages[-1]
+    #     if button.is_displayed() and button.is_enabled():
+    #         print('нашли и жамкаем')
+    #         button.click()
+    #         await asyncio.sleep(3)
+    #         scroll_element = await self.wait_for_element(By.CLASS_NAME, "home-match-box", timeout=5)
+    #         if scroll_element:
+    #             self.driver_fb.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", scroll_element)
+    #             await asyncio.sleep(1)
+    #         await asyncio.sleep(30)
+    #         return True
+    #     await asyncio.sleep(3)
+
     async def request_check(self):
         # Проверяем наличие запроса
         if os.path.exists(REQUEST_FILE):
