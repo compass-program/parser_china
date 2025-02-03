@@ -16,6 +16,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
 from sqlalchemy import select, insert
 from app.logging import setup_logger
 from app.models import coefficient, match
@@ -76,6 +77,7 @@ class OddsFetcher:
         }
         self.debug = LOCAL_DEBUG
         self.actions = None
+        self.action = ActionChains(self.driver_fb)
         self.translator = Translator()
         self.previous_data = {}
         self.translate_cash = load_translate_cash()
@@ -487,11 +489,10 @@ class OddsFetcher:
                         'Успешный переход в баскетбольную лигу')
                     # Скролим вниз блок с лигами
                     await asyncio.sleep(2)
-                    element = await self.wait_for_element(By.CLASS_NAME, 'home-match-box.home-match-type', timeout=5)
-                    # element = self.driver_fb.find_element(By.CLASS_NAME, 'home-match-box.home-match-type')
-                    if element:
-                        self.driver_fb.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", element)
-                        await asyncio.sleep(1)
+                    # element = await self.wait_for_element(By.CLASS_NAME, 'home-match-box.home-match-type', timeout=5)
+                    # if element:
+                    #     self.driver_fb.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", element)
+                    #     await asyncio.sleep(1)
                     return
 
                 # Если кнопка не найдена, перезагружаем страницу
@@ -848,6 +849,84 @@ class OddsFetcher:
         """
         return f"{site}_{league}_{game['opponent_0']}_{game['opponent_1']}"
 
+    async def page_check(self):
+        while True:
+            await asyncio.sleep(3)
+            try:
+                scroll_element = await self.wait_for_element(By.CLASS_NAME, 'home-match-box.home-match-type', timeout=5)
+                if scroll_element:
+                    self.driver_fb.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", scroll_element)
+                    await asyncio.sleep(1)
+
+                leagues = scroll_element.find_elements(By.CSS_SELECTOR, 'span.league-name')
+                leagues_names = [league.text for league in leagues]
+                print(leagues_names)
+                target_leagues = list(LEAGUES.keys())
+                print(target_leagues)
+                for target in target_leagues:
+                    if target in leagues_names:
+                        print(f'На текущей странице найдены лига {target}')
+                        await asyncio.sleep(90)
+                        continue
+                print('Нужные лиги не найдены, поэтому ищем хэдер для проверки кол-ва матчей')
+                header_content = await self.wait_for_element(By.CLASS_NAME, 'ui-carousel-content')
+                match_counter_elements = header_content.find_elements(
+                    By.CSS_SELECTOR,
+                    "div[class*='ui-carousel-item sport-type-item']"
+                )
+                if match_counter_elements:
+                    print('нашли хэдеры с матчами')
+                    for element in match_counter_elements:
+                        p_elems = element.find_elements(By.TAG_NAME, "p")
+                        if p_elems[0].text == '篮球':
+                            counter_str = p_elems[1].text
+                            if counter_str == '99+':
+                                counter = 100
+                            else:
+                                counter = int(counter_str)
+                            print(f'Количество матчей в текущем хэдере: {counter}')
+                            if counter > 50:
+                                page_clicks = 1
+                                if counter == 100:
+                                    page_clicks = 2
+                                for i in range(page_clicks):
+                                    center_element = await self.wait_for_element(
+                                        By.CLASS_NAME,
+                                        'home-match-box.home-match-type',
+                                        timeout=15
+                                    )
+                                    self.action.move_to_element(center_element).perform()
+                                    await asyncio.sleep(2)
+                                    print('Ищем кнопки листания страниц')
+                                    page_block = await self.wait_for_element(By.CSS_SELECTOR,
+                                                                             'div.home-matches-pages__main')
+                                    pages = page_block.find_elements(By.CSS_SELECTOR,
+                                                                     "span[class*='q-btn__content text-center']")
+                                    button = pages[-1]
+                                    print(f'нашли кнопку след.страницы')
+                                    if button.is_displayed() and button.is_enabled():
+                                        print('нашли и жмем')
+                                        button.click()
+                                        await asyncio.sleep(2)
+                                        print('скролим вниз')
+                                        scroll_element = await self.wait_for_element(By.CLASS_NAME,
+                                                                                     'home-match-box.home-match-type',
+                                                                                     timeout=5)
+                                        if scroll_element:
+                                            self.driver_fb.execute_script(
+                                                "arguments[0].scrollTop = arguments[0].scrollHeight", scroll_element)
+                                            await asyncio.sleep(1)
+                                        await self.send_to_logs(
+                                            f"Успешно переключились на след страницу номер {page_clicks + i + 1}")
+
+            except Exception as e:
+                await self.send_to_logs(f"Произошла ошибка при попытке переключить страницу: {str(e)}.")
+
+            # Ожидание перед следующей проверкой матчей на странице
+            finally:
+                await asyncio.sleep(90)
+                continue
+
     async def request_check(self):
         # Проверяем наличие запроса
         if os.path.exists(REQUEST_FILE):
@@ -872,6 +951,16 @@ class OddsFetcher:
     def __del__(self):
         asyncio.run(fetcher.close())
 
+    async def subrun(self, leagues):
+        try:
+            while True:
+                await self.collect_odds_data(leagues)
+                await self.request_check()
+                await asyncio.sleep(1)
+        except Exception as e:
+            await self.send_to_logs(
+                f"Произошла ошибка: {str(e)}. ")
+
     async def run(self, *args, **kwargs):
         """
         Основной метод для запуска парсера с перезапуском при ошибках.
@@ -889,11 +978,15 @@ class OddsFetcher:
                 await self.init_async_components()
                 await self.get_page()
                 await self.main_page()
-
-                while True:
-                    await self.collect_odds_data(leagues)
-                    await self.request_check()
-                    await asyncio.sleep(1)  # Пауза между циклами сбора данных
+                await asyncio.gather(
+                    self.subrun(leagues),
+                    self.page_check()
+                )
+                # while True:
+                #     await self.collect_odds_data(leagues)
+                #     await self.request_check()
+                #     # await self.page_check()
+                #     await asyncio.sleep(1)  # Пауза между циклами сбора данных
             except Exception as e:
                 if self.driver_fb and self.driver_fb.session_id:
                     self.driver_fb.save_screenshot(
@@ -915,6 +1008,7 @@ class OddsFetcher:
                     await self.redis_client.close()
                 if self.driver_fb:
                     self.driver_fb.quit()
+
 
 if __name__ == "__main__":
     LOCAL_DEBUG = 1
