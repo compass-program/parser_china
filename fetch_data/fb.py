@@ -860,97 +860,69 @@ class OddsFetcher:
 
                 leagues = scroll_element.find_elements(By.CSS_SELECTOR, 'span.league-name')
                 leagues_names = [league.text for league in leagues]
-                print(leagues_names)
                 target_leagues = list(LEAGUES.keys())
-                print(target_leagues)
+                flag = True
                 for target in target_leagues:
                     if target in leagues_names:
                         print(f'На текущей странице найдены лига {target}')
-                        await asyncio.sleep(90)
-                        continue
-                print('Нужные лиги не найдены, поэтому ищем хэдер для проверки кол-ва матчей')
-                header_content = await self.wait_for_element(By.CLASS_NAME, 'ui-carousel-content')
-                match_counter_elements = header_content.find_elements(
-                    By.CSS_SELECTOR,
-                    "div[class*='ui-carousel-item sport-type-item']"
-                )
-                if match_counter_elements:
-                    print('нашли хэдеры с матчами')
-                    for element in match_counter_elements:
-                        p_elems = element.find_elements(By.TAG_NAME, "p")
-                        if p_elems[0].text == '篮球':
-                            counter_str = p_elems[1].text
-                            if counter_str == '99+':
-                                counter = 100
-                            else:
-                                counter = int(counter_str)
-                            print(f'Количество матчей в текущем хэдере: {counter}')
-                            if counter > 50:
-                                page_clicks = 1
-                                if counter == 100:
-                                    page_clicks = 2
-                                for i in range(page_clicks):
-                                    center_element = await self.wait_for_element(
-                                        By.CLASS_NAME,
-                                        'home-match-box.home-match-type',
-                                        timeout=15
-                                    )
-                                    self.action.move_to_element(center_element).perform()
-                                    await asyncio.sleep(2)
-                                    print('Ищем кнопки листания страниц')
-                                    page_block = await self.wait_for_element(By.CSS_SELECTOR,
-                                                                             'div.home-matches-pages__main')
-                                    pages = page_block.find_elements(By.CSS_SELECTOR,
-                                                                     "span[class*='q-btn__content text-center']")
-                                    button = pages[-1]
-                                    print(f'нашли кнопку след.страницы')
-                                    if button.is_displayed() and button.is_enabled():
-                                        print('нашли и жмем')
-                                        button.click()
+                        flag = False
+                if flag:
+                    print('Нужные лиги не найдены, поэтому ищем хэдер для проверки кол-ва матчей')
+                    header_content = await self.wait_for_element(By.CLASS_NAME, 'ui-carousel-content')
+                    match_counter_elements = header_content.find_elements(
+                        By.CSS_SELECTOR,
+                        "div[class*='ui-carousel-item sport-type-item']"
+                    )
+                    if match_counter_elements:
+                        print('нашли хэдеры с матчами')
+                        for element in match_counter_elements:
+                            p_elems = element.find_elements(By.TAG_NAME, "p")
+                            if p_elems[0].text == '篮球':
+                                counter_str = p_elems[1].text
+                                if counter_str == '99+':
+                                    counter = 100
+                                else:
+                                    counter = int(counter_str)
+                                print(f'Количество матчей в текущем хэдере: {counter}')
+                                if counter > 50:
+                                    page_clicks = 1
+                                    if counter == 100:
+                                        page_clicks = 2
+                                    for i in range(page_clicks):
+                                        center_element = await self.wait_for_element(
+                                            By.CLASS_NAME,
+                                            'home-match-box.home-match-type',
+                                            timeout=15
+                                        )
+                                        self.action.move_to_element(center_element).perform()
                                         await asyncio.sleep(2)
-                                        print('скролим вниз')
-                                        scroll_element = await self.wait_for_element(By.CLASS_NAME,
-                                                                                     'home-match-box.home-match-type',
-                                                                                     timeout=5)
-                                        if scroll_element:
-                                            self.driver_fb.execute_script(
-                                                "arguments[0].scrollTop = arguments[0].scrollHeight", scroll_element)
-                                            await asyncio.sleep(1)
-                                        await self.send_to_logs(
-                                            f"Успешно переключились на след страницу номер {page_clicks + i + 1}")
+                                        print('Ищем кнопки листания страниц')
+                                        page_block = await self.wait_for_element(By.CSS_SELECTOR,
+                                                                                 'div.home-matches-pages__main')
+                                        pages = page_block.find_elements(By.CSS_SELECTOR,
+                                                                         "span[class*='q-btn__content text-center']")
+                                        button = pages[-1]
+                                        print(f'нашли кнопку след.страницы')
+                                        if button.is_displayed() and button.is_enabled():
+                                            print('кнопка активна - нажимаем')
+                                            button.click()
+                                            await asyncio.sleep(2)
+                                            scroll_element = await self.wait_for_element(By.CLASS_NAME,
+                                                                                         'home-match-box.home-match-type',
+                                                                                         timeout=5)
+                                            if scroll_element:
+                                                self.driver_fb.execute_script(
+                                                    "arguments[0].scrollTop = arguments[0].scrollHeight", scroll_element)
+                                                await asyncio.sleep(1)
+                                            await self.send_to_logs(
+                                                f"Успешно переключились на след страницу номер {page_clicks + i + 1}")
 
             except Exception as e:
                 await self.send_to_logs(f"Произошла ошибка при попытке переключить страницу: {str(e)}.")
 
-            # Ожидание перед следующей проверкой матчей на странице
             finally:
-                await asyncio.sleep(90)
+                await asyncio.sleep(360)
                 continue
-
-    # async def test_kalo(self):
-    #     self.driver_fb.get('https://test.f66b88sport.com/pc/index.html#/?type=3&sportId=3')
-    #     await asyncio.sleep(15)
-    #     center_element = await self.wait_for_element(By.CLASS_NAME, "home-match-box")
-    #     await asyncio.sleep(10)
-    #     self.driver_fb.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", center_element)
-    #     await asyncio.sleep(2)
-    #     self.action.move_to_element(center_element).perform()
-    #     await asyncio.sleep(2)
-    #     print('Ищем кнопки листания страниц')
-    #     page_block = await self.wait_for_element(By.CSS_SELECTOR, 'div.home-matches-pages__main')
-    #     pages = page_block.find_elements(By.CSS_SELECTOR, "span[class*='q-btn__content text-center']")
-    #     button = pages[-1]
-    #     if button.is_displayed() and button.is_enabled():
-    #         print('нашли и жамкаем')
-    #         button.click()
-    #         await asyncio.sleep(3)
-    #         scroll_element = await self.wait_for_element(By.CLASS_NAME, "home-match-box", timeout=5)
-    #         if scroll_element:
-    #             self.driver_fb.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", scroll_element)
-    #             await asyncio.sleep(1)
-    #         await asyncio.sleep(30)
-    #         return True
-    #     await asyncio.sleep(3)
 
     async def request_check(self):
         # Проверяем наличие запроса
