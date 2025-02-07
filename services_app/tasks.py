@@ -6,6 +6,7 @@ import urllib3
 from celery import current_app
 from services_app.celery_app import celery_app, logger, redis_client
 from fetch_data.parsers import parsers
+from fetch_data.fav_check_parser import FavAkty
 
 
 PARSER_TIMEOUT = 60  # Таймаут для завершения старого инстанса
@@ -136,14 +137,15 @@ def parse_some_data(self, parser_name, *args, **kwargs):
 
 
 @celery_app.task
-def check_and_start_parsers(is_first_run: bool = False):
+def check_and_start_parsers(is_first_run: bool = False, check_akty: bool = False):
     """
     Проверяет активные задачи парсеров и запускает их в нужном порядке.
 
     Если это первый запуск (`is_first_run=True`), выполняется очистка всех данных в Redis.
 
     Args:
-        is_first_run (bool): Флаг, указывающий, является ли это первым запуском.
+        is_first_run (bool): Флаг, указывающий, является ли это первым запуском
+        check_akty (bool): Флаг, указывающий, нужно ли проверять избранное Akty.
     """
     logger.info("Запуск проверки активных задач парсеров.")
 
@@ -161,6 +163,14 @@ def check_and_start_parsers(is_first_run: bool = False):
             subprocess.run([script_path], check=True)
         except Exception as e:
             logger.error(f"Ошибка при очистке таблицы матчей: {e}")
+
+    if check_akty:
+        logger.info("Запуск проверки избранного Akty.")
+        # Проверка избранного Akty
+        check_akty_favorites.apply_async()
+        # parse_some_data.apply_async(args=('CheckAkty',),
+        #                             kwargs={'is_first_run': False})
+        time.sleep(300)
 
     inspect = current_app.control.inspect()
     active_tasks = inspect.active()  # Получаем активные задачи
@@ -218,3 +228,29 @@ def check_and_start_parsers(is_first_run: bool = False):
         else:
             logger.info(
                 "Инстанс FetchAkty был запущен другим процессом, пропускаем запуск.")
+
+
+@celery_app.task(bind=True, max_retries=3, default_retry_delay=20)
+def check_akty_favorites(self):
+    """
+    Запуск парсера для проверки избранного.
+
+    :param self: Ссылка на текущий экземпляр задачи.
+    """
+    logger.info("Запуск парсера проверки избранного для Akty.com")
+    parser = None
+    try:
+        parser = FavAkty()
+        status = asyncio.run(parser.run())
+        print(status)
+    except urllib3.exceptions.ProtocolError as e:
+        logger.error(f"Ошибка протокола при выполнении парсера: {e}")
+        self.retry(exc=e)
+    except Exception as e:
+        logger.error(f"Ошибка при выполнении парсера: {e}")
+        self.retry(exc=e)
+    finally:
+        if parser:
+            asyncio.run(parser.close())
+        # Удаление метаданных задачи
+        clear_task_metadata(self.request.id)

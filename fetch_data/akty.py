@@ -629,7 +629,7 @@ class FetchAkty:
             # Вычисляем координаты для клика в правый верхний угол
             right_upper_x = window_width - 1  # 1 пиксель левее правой границы
             right_upper_y = 1
-            self.actions.move_by_offset(right_upper_x, right_upper_y).click().perform()
+            self.action.move_by_offset(right_upper_x, right_upper_y).click().perform()
             await self.aggregator_page()
 
         await self.send_to_logs('Успешный переход в раздел баскетбола')
