@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from decimal import Decimal
-from services_app.tasks import parse_some_data
+from services_app.tasks import parse_some_data, check_akty_favorites
 from app.schema import ParserRequest, ResponseMatch
 from transfer_data.database import get_async_session
 from transfer_data.redis_client import RedisClient
@@ -21,9 +21,23 @@ route = APIRouter()
 # Настройка логгера
 db_logger = setup_logger('db_requests', 'db_requests_debug.log')
 
-# Пути для работы с файлами
-# REQUEST_FILE = 'request.txt'
-# SCREENSHOT_FILE = 'screenshot.png'
+
+@route.post("/check_fav/")
+async def check_favorites():
+    """
+    Эндпоинт для запуска парсера проверки избранного для Akty.com.
+
+    :return: Сообщение о статусе запуска парсера
+    """
+    try:
+        # Запускаем задачу Celery
+        check_akty_favorites.delay()
+
+        return {"status": "Checking favorites leagues on AKTY.COM..."}
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @route.post("/run_parser/")
@@ -36,7 +50,8 @@ async def run_parser(request: ParserRequest):
     """
     parsers_name = [
         'FetchAkty',
-        'FB'
+        'FB',
+        'CheckAkty'
     ]
     try:
         if request.parser_name not in parsers_name:

@@ -1,8 +1,6 @@
 import os
 import re
 import asyncio
-import undetected_chromedriver as uc
-from typing import List, Dict, Any
 from dotenv import load_dotenv
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -12,6 +10,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException, NoSuchElementException
 from selenium.webdriver.common.keys import Keys
 from app.logging import setup_logger
+from selenium.webdriver.firefox.options import Options
+from undetected_geckodriver import Firefox
 
 
 # Загрузка переменных окружения из .env файла
@@ -58,22 +58,37 @@ class FavAkty:
             self,
             headless: bool = False,
             retries: int = 3
-    ) -> uc.Chrome:
+    ):
         """
-        Инициализирует и возвращает WebDriver для браузера Chrome.
+        Инициализирует и возвращает WebDriver.
 
         :param headless: Запуск браузера в headless режиме.
         :param retries: Количество попыток запуска WebDriver в случае ошибки.
-        :return: WebDriver для браузера Chrome.
+        :return: WebDriver.
         """
 
         attempt = 0
         while attempt < retries:
             try:
-                options = uc.ChromeOptions()
+                options = Options()
+                if headless:
+                    options.add_argument("-headless")
+                # НАСТРОЙКА ПРОКСИ
                 if self.proxy:
-                    options.add_argument(f'--proxy-server={self.proxy}')
-                driver = uc.Chrome(options=options, headless=headless)
+                    proxy_host, proxy_port = str(self.proxy).split(':')
+                    proxy_port = int(proxy_port)
+                    proxy_port_socks = proxy_port + 1
+                    options.set_preference("network.proxy.type", 1)
+                    options.set_preference("network.proxy.http", proxy_host)
+                    options.set_preference("network.proxy.http_port", proxy_port)
+                    options.set_preference("network.proxy.ssl", proxy_host)
+                    options.set_preference("network.proxy.ssl_port", proxy_port)
+                    options.set_preference("network.proxy.socks", proxy_host)
+                    options.set_preference("network.proxy.socks_port", proxy_port_socks)
+                    options.set_preference("network.proxy.socks_version", 5)
+                    options.set_preference("network.proxy.no_proxies_on", "localhost, 127.0.0.1")
+
+                driver = Firefox(options=options)
                 return driver
             except WebDriverException as e:
                 attempt += 1
@@ -241,28 +256,56 @@ class FavAkty:
 
         for attempt in range(max_retries):
             try:
-                await asyncio.sleep(15)
-                ul_element = await self.wait_for_element(
-                    By.CLASS_NAME,
-                    "header__venue__3IZlT",
+                # await asyncio.sleep(15)
+                # ul_element = await self.wait_for_element(
+                #     By.CLASS_NAME,
+                #     "header__venue__3IZlT",
+                #     timeout=30
+                # )
+                # if ul_element:
+                #     span_element = ul_element.find_element(
+                #         By.XPATH,
+                #         ".//span[text()='体育']"
+                #     )
+                #     self.action.move_to_element(span_element).perform()
+                #     await asyncio.sleep(2)
+                #     # Проверка кликабельности элемента
+                #
+                #     h4_element = await self.wait_for_element(
+                #         By.XPATH,
+                #         "//img[@src='https://senbackkg.m42i79a.com/main-consumer-web/assets-oss/ak/images/header/ty-hq.862daf053a4b08ea6650a4e85ece1711.webp?x-oss-process=image/resize,w_210,h_210/quality,Q_100/sharpen,100/format,webp']"
+                #     )
+                #     await asyncio.sleep(5)
+                #     if h4_element.is_displayed() and h4_element.is_enabled():
+                #         h4_element.click()
+                #         return
+                #     else:
+                #         # Если элемент не кликабелен, перезагружаем страницу и повторяем
+                #         self.driver.refresh()
+                #         await asyncio.sleep(5)
+                #         continue
+                # else:
+                #     self.driver.refresh()
+                #     await asyncio.sleep(5)
+                #     continue
+                await self.change_zoom()
+                await asyncio.sleep(5)
+                self.driver.execute_script("window.scrollBy(0, 800);")
+                await asyncio.sleep(5)
+                bks_element = await self.wait_for_element(
+                    By.CSS_SELECTOR,
+                    "div[class*='styles__item_content__2IMkn']",
                     timeout=30
                 )
-                if ul_element:
-                    span_element = ul_element.find_element(
+                await self.scroll_to_element(bks_element)
+                if bks_element:
+                    await asyncio.sleep(10)
+                    button_element = bks_element.find_element(
                         By.XPATH,
-                        ".//span[text()='体育']"
+                        "//img[@src='/client/./assets/pic_sport_huanqiu@2x.668be1cd.png?x-oss-process=image/quality,Q_90/format,webp']"
                     )
-                    self.action.move_to_element(span_element).perform()
-                    await asyncio.sleep(2)
-                    # Проверка кликабельности элемента
-
-                    h4_element = await self.wait_for_element(
-                        By.XPATH,
-                        "//img[@src='https://senbackkg.m42i79a.com/main-consumer-web/assets-oss/ak/images/header/ty-hq.862daf053a4b08ea6650a4e85ece1711.webp?x-oss-process=image/resize,w_210,h_210/quality,Q_100/sharpen,100/format,webp']"
-                    )
-
-                    if h4_element.is_displayed() and h4_element.is_enabled():
-                        h4_element.click()
+                    if button_element.is_displayed() and button_element.is_enabled():
+                        button_element.click()
                         return
                     else:
                         # Если элемент не кликабелен, перезагружаем страницу и повторяем
@@ -386,18 +429,25 @@ class FavAkty:
     async def change_zoom(
             self
     ):
-        self.driver.get('chrome://settings/appearance')
         self.driver.execute_script(
-            'chrome.settingsPrivate.setDefaultZoom(0.25);'
+            "document.body.style.zoom = '85%';"
         )
 
     async def close(self):
-        if self.driver:
-            self.driver.quit()
-            await self.send_to_logs("Драйвер был закрыт принудительно")
+        if self.driver is not None:
+            try:
+                self.driver.quit()
+                await self.send_to_logs("Драйвер был закрыт принудительно")
+            except Exception as e:
+                await self.send_to_logs(f"Ошибка при закрытии драйвера: {e}")
+            finally:
+                self.driver = None
 
     def __del__(self):
-        asyncio.run(self.close())
+        try:
+            asyncio.run(self.close())
+        except Exception as e:
+            print(f"Ошибка при закрытии драйвера: {e}")
 
     async def run(self, *args, **kwargs):
         """
@@ -413,7 +463,7 @@ class FavAkty:
 
         while attempt < max_retries:
             try:
-                await self.change_zoom()
+                self.driver.fullscreen_window()
                 await self.authorization()
                 await self.main_page()
                 await self.aggregator_page()
@@ -422,7 +472,7 @@ class FavAkty:
                 break
 
             except Exception as e:
-                if self.driver and self.driver.session_id:
+                if self.driver is not None and self.driver.session_id:
                     self.driver.save_screenshot(
                         f'screenshot_fav_akty_{attempt}.png')
                 await self.send_to_logs(
@@ -435,9 +485,7 @@ class FavAkty:
                         "Достигнуто максимальное количество попыток. Остановка.")
                     break
             finally:
-                if self.driver:
-                    self.driver.quit()
-                return f"Избранное проверено"
+                await self.close()
 
 
 if __name__ == "__main__":

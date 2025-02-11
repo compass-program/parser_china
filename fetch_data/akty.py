@@ -832,7 +832,7 @@ class FetchAkty:
 
                         try:
                             bet_divs = list_mid_element.find_all('div', class_='handicap-col')
-                            handicap_bet_div = bet_divs[1].find_all('span',
+                            handicap_bet_div = bet_divs[1].find_all('div',
                                                                     class_='highlight-odds')
                             handicap_point_divs = bet_divs[1].find_all('div',
                                                                     class_='handicap-value-text')
@@ -851,7 +851,7 @@ class FetchAkty:
                             1].get_text().strip() if len(
                             handicap_point_divs) > 1 else ""
 
-                        total_bet_div = bet_divs[2].find_all('span',
+                        total_bet_div = bet_divs[2].find_all('div',
                                                              class_='highlight-odds')
                         total_point_divs = bet_divs[2].find_all('div',
                                                                 class_='handicap-value-text')
