@@ -1,4 +1,5 @@
 undetected-chromedriver==3.5.5
+undetected-geckodriver==1.0.7
 selenium==4.22.0
 PySocks==1.7.1
 setuptools==70.1.1

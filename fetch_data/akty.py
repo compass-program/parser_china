@@ -87,7 +87,6 @@ class FetchAkty:
         self.previous_data = {}
         self.translator = Translator()
         self.translate_cash = load_translate_cash()
-        self.restart_required = False
         self.ended_games = {}
         self.history_data = []
 
@@ -1019,7 +1018,7 @@ class FetchAkty:
         """
         previous_hash = await self.get_container_hash()
         unchanged_count = 0
-        max_unchanged_checks = 7200
+        max_unchanged_checks = 3600
 
         while True:
             await asyncio.sleep(check_interval)
@@ -1043,8 +1042,7 @@ class FetchAkty:
                 await self.send_to_logs(
                     f"Данные не изменились более {max_unchanged_checks} раз. Перезапуск."
                 )
-                self.restart_required = True  # Устанавливаем флаг для перезапуска
-                break
+                await self.run()
 
     async def close(self):
         if self.driver:
@@ -1087,26 +1085,15 @@ class FetchAkty:
                 if not self.debug:
                     self.redis_client = RedisClient()
                     await self.redis_client.connect()
+
                 await self.change_zoom()
                 await self.init_async_components()
 
-                # Начинаем с авторизации, если требуется перезапуск
-                if self.restart_required:
-                    self.restart_required = False  # Сбрасываем флаг
-                    await self.authorization()
-                    await self.main_page()
-                    await self.aggregator_page()
-                else:
-                    await self.authorization()
-                    await self.main_page()
-                    await self.aggregator_page()
+                await self.authorization()
+                await self.main_page()
+                await self.aggregator_page()
 
                 await self.monitor_leagues(leagues)
-
-                if self.restart_required:
-                    raise TimeoutException('Данные матчей не найдены')
-
-                break
 
             except Exception as e:
                 if self.driver and self.driver.session_id:

@@ -3,6 +3,7 @@ import asyncio
 import aiofiles
 import subprocess
 import dotenv
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +22,9 @@ route = APIRouter()
 # Настройка логгера
 db_logger = setup_logger('db_requests', 'db_requests_debug.log')
 
+# Переменная для хранения времени последнего вызова эндпоинта
+last_call_time = None
+
 
 @route.post("/check_fav/")
 async def check_favorites():
@@ -29,9 +33,19 @@ async def check_favorites():
 
     :return: Сообщение о статусе запуска парсера
     """
+    global last_call_time
+    current_time = datetime.now(timezone.utc)
+
+    if last_call_time is not None:
+        # Проверка прошло ли менее 10 минут
+        if current_time - last_call_time < timedelta(minutes=10):
+            raise HTTPException(status_code=429, detail="Too many requests. Please wait before trying again.")
     try:
         # Запускаем задачу Celery
         check_akty_favorites.delay()
+
+        # Обновляем время последнего вызова
+        last_call_time = current_time
 
         return {"status": "Checking favorites leagues on AKTY.COM..."}
     except HTTPException as e:
