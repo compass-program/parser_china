@@ -6,6 +6,7 @@ import dotenv
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import FileResponse
+from fastapi.security import APIKeyHeader
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from decimal import Decimal
@@ -17,7 +18,6 @@ from app.models import league, match, coefficient
 from app.logging import setup_logger
 
 route = APIRouter()
-# Удаляем loop = asyncio.get_event_loop() так как оно не используется
 
 # Настройка логгера
 db_logger = setup_logger('db_requests', 'db_requests_debug.log')
@@ -25,21 +25,41 @@ db_logger = setup_logger('db_requests', 'db_requests_debug.log')
 # Переменная для хранения времени последнего вызова эндпоинта
 last_call_time = None
 
+# API ключ из переменных окружения
+API_KEY = os.getenv("API_KEY")
+API_KEY_NAME = "X-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=True)
+
+REQUEST_INTERVAL = 10
+
+
+# проверка API ключа
+async def get_api_key(api_key: str = Depends(api_key_header)):
+    if api_key != API_KEY:
+        raise HTTPException(status_code=403, detail="Could not validate API key")
+    return api_key
+
 
 @route.post("/check_fav/")
-async def check_favorites():
+async def check_favorites(api_key: str = Depends(get_api_key)):
     """
     Эндпоинт для запуска парсера проверки избранного для Akty.com.
 
+    :param api_key: API ключ для авторизации
     :return: Сообщение о статусе запуска парсера
     """
     global last_call_time
     current_time = datetime.now(timezone.utc)
+    interval = REQUEST_INTERVAL
 
     if last_call_time is not None:
         # Проверка прошло ли менее 10 минут
-        if current_time - last_call_time < timedelta(minutes=10):
-            raise HTTPException(status_code=429, detail="Too many requests. Please wait before trying again.")
+        if current_time - last_call_time < timedelta(minutes=interval):
+            wait_time = (last_call_time + timedelta(minutes=interval) - current_time).total_seconds() / 60
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many requests. Please wait {wait_time:.1f} minutes before trying again."
+            )
     try:
         # Запускаем задачу Celery
         check_akty_favorites.delay()
@@ -81,14 +101,26 @@ async def run_parser(request: ParserRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@route.get("/logs/akty")
-async def get_akty_logs():
+@route.get("/logs/parser-logs/{parser_name}")
+async def get_parser_logs(parser_name: str):
     """
-    Эндпоинт для получения последних 50 строк из файла логов akty_debug.log.
+    Эндпоинт для получения последних 50 строк из файла логов для указанного парсера.
+
+    Args:
+        parser_name (str): название парсера('ob', 'fb' или 'fav').
 
     :return: Содержимое последних 50 строк лог-файла
     """
-    log_file_path = 'logs/akty_debug.log'
+    if parser_name.lower() not in ('ob', 'fb', 'fav'):
+        raise HTTPException(status_code=400, detail="parser_name must be 'ob' or 'fb' or 'fav'.")
+
+    if parser_name == 'fb':
+        log_file_path = 'logs/fb_debug.log'
+    elif parser_name == 'ob':
+        log_file_path = 'logs/akty_debug.log'
+    else:
+        log_file_path = 'logs/fav_akty_debug.log'
+
     try:
         async with aiofiles.open(log_file_path, 'r') as log_file:
             lines = await log_file.readlines()
@@ -99,26 +131,6 @@ async def get_akty_logs():
         raise HTTPException(status_code=404, detail="Log file not found")
     except Exception as e:
         # Детализированный ответ об ошибке
-        raise HTTPException(status_code=500, detail=f"Error reading log file: {str(e)}")
-
-
-@route.get("/logs/fb")
-async def get_fb_logs():
-    """
-    Эндпоинт для получения последних 50 строк из файла логов fb_debug.log.
-
-    :return: Содержимое последних 50 строк лог-файла
-    """
-    log_file_path = 'logs/fb_debug.log'
-    try:
-        async with aiofiles.open(log_file_path, 'r') as log_file:
-            lines = await log_file.readlines()
-            # Получаем последние 50 строк
-            last_lines = lines[-50:]
-            return {"logs": last_lines}
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Log file not found")
-    except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading log file: {str(e)}")
 
 

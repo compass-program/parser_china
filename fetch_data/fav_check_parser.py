@@ -378,7 +378,7 @@ class FavAkty:
 
         button = match_list_block.find_element(By.CSS_SELECTOR, "div[class*='match-type']")
         button.click()
-        print('Свернули карточки с лигами')
+        await self.send_to_logs('Свернули карточки с лигами')
         await asyncio.sleep(5)
 
         leagues_cards = match_list_block.find_elements(
@@ -388,14 +388,14 @@ class FavAkty:
         await asyncio.sleep(5)
 
         if leagues_cards:
-            print(f'Нашли карточки заголовков лиг в кол-ве: {len(leagues_cards)}')
+            await self.send_to_logs(f'Нашли карточки заголовков лиг в кол-ве: {len(leagues_cards)}')
             leagues = target_leagues.keys()
             for card in leagues_cards:
                 try:
                     league_element = card.find_element(By.CSS_SELECTOR, "span[class*='ellipsis allow-user-select']")
                     league_name = league_element.text
                     if league_name in leagues:
-                        print(f'Чекаем на избранное лигу: {league_name}')
+                        await self.send_to_logs(f'Проверяем на избранное лигу: {league_name}')
                         fav_element = card.find_element(
                             By.CSS_SELECTOR,
                             "div[class*='icon-wrap m-star-wrap-pin specialty-collect']"
