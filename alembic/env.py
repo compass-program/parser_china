@@ -4,12 +4,13 @@ from logging.config import fileConfig
 from dotenv import load_dotenv
 
 from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import pool, MetaData
 
 from alembic import context
 
+from app.auth.models import *
 from app.models import *
-from transfer_data.database import metadata
+from transfer_data.database import metadata, Base
 
 load_dotenv()
 DB_HOST = os.getenv('DB_HOST')
@@ -36,9 +37,15 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
-target_metadata = metadata
+def combine_metadata(*args):
+    m = MetaData()
+    for metadata_obj in args:
+        for t in metadata_obj.tables.values():
+            t.tometadata(m)
+    return m
+
+# Объединяем метаданные из Base и Table definitions
+target_metadata = combine_metadata(Base.metadata, metadata)
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

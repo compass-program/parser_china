@@ -1,7 +1,9 @@
 from sqlalchemy import Integer, String, Table, Column, ForeignKey, Date, Boolean
+from sqlalchemy.orm import relationship, registry
+from transfer_data.database import Base, metadata
 
-from transfer_data.database import metadata
 
+# Table definitions for raw SQL queries
 league = Table(
     "league",
     metadata,
@@ -34,3 +36,18 @@ coefficient = Table(
     Column("time_game", String(10)),
     Column("server_time", String(10)),
 )
+
+# Declarative models for Alembic
+mapper_registry = registry()
+
+@mapper_registry.mapped
+class League:
+    __table__ = league
+
+@mapper_registry.mapped
+class Match:
+    __table__ = match
+
+@mapper_registry.mapped
+class Coefficient:
+    __table__ = coefficient

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from decimal import Decimal
 from services_app.tasks import parse_some_data, check_akty_favorites
-from app.schema import ParserRequest, ResponseMatch
+from app.schemas import ParserRequest, ResponseMatch
 from transfer_data.database import get_async_session
 from transfer_data.redis_client import RedisClient
 from app.models import league, match, coefficient
