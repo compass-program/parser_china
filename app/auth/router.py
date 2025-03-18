@@ -18,6 +18,7 @@ from app.auth.security import (
     verify_password, 
     get_password_hash, 
     create_access_token, 
+    validate_password,
     ACCESS_TOKEN_EXPIRE_MINUTES,
     MAX_SESSIONS_PER_USER
 )
@@ -130,10 +131,13 @@ async def register_user(
             - created_at: дата и время создания
     
     Raises:
-        HTTPException(400): Если пользователь с таким именем уже существует
+        HTTPException(400): Если пользователь с таким именем уже существует или пароль не соответствует требованиям безопасности
         HTTPException(401): Если токен авторизации недействителен
         HTTPException(403): Если у пользователя нет прав администратора
     """
+    # Валидация пароля
+    validate_password(user_data.password)
+
     # Проверяем, существует ли пользователь
     existing_user = await session.execute(
         select(User).where(User.username == user_data.username)
@@ -143,7 +147,7 @@ async def register_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username already registered"
         )
-    
+
     # Создаем нового пользователя
     new_user = User(
         username=user_data.username,

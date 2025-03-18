@@ -57,4 +57,34 @@ def decode_token(token: str) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
-        ) 
+        )
+
+def validate_password(password: str) -> bool:
+    """
+    Проверяет пароль на соответствие требованиям:
+    - Минимум 8 символов
+    - Отсутствие кириллицы
+    
+    Args:
+        password: строка с паролем для проверки
+        
+    Returns:
+        bool: True если пароль соответствует требованиям
+        
+    Raises:
+        HTTPException(400): Если пароль не соответствует требованиям безопасности
+    """
+    if len(password) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="Пароль должен содержать минимум 8 символов"
+        )
+    
+    # Проверка на наличие кириллицы
+    if any(ord('а') <= ord(char) <= ord('я') or ord('А') <= ord(char) <= ord('Я') for char in password):
+        raise HTTPException(
+            status_code=400,
+            detail="Пароль не должен содержать русские буквы"
+        )
+    
+    return True 
