@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -163,10 +163,19 @@ async def register_user(
 @router.get("/sessions", response_model=ActiveSessionsResponse)
 async def get_active_sessions(
     current_admin: User = Depends(get_current_admin_user),
-    session: AsyncSession = Depends(get_async_session)
+    session: AsyncSession = Depends(get_async_session),
+    limit: int = Query(default=10, ge=1, le=100, description="Количество записей на странице"),
+    offset: int = Query(default=0, ge=0, description="Смещение от начала списка")
 ):
     """
     Получение списка всех активных сессий (только для администраторов)
+    
+    Параметры:
+    - limit: количество записей на странице (по умолчанию 10, максимум 100)
+    - offset: смещение от начала списка (по умолчанию 0)
+    
+    Сортировка:
+    - Записи сортируются по полю last_activity в порядке убывания
     
     Returns:
         ActiveSessionsResponse: Список активных сессий
@@ -186,12 +195,21 @@ async def get_active_sessions(
         HTTPException(500): В случае внутренней ошибки сервера
     """
     try:
-        # Получаем все активные сессии с информацией о пользователях
+        # Получаем общее количество активных сессий
+        total_count = await session.execute(
+            select(UserSession)
+            .where(UserSession.is_active == True)
+        )
+        total_sessions = len(total_count.scalars().all())
+
+        # Получаем сессии с пагинацией
         result = await session.execute(
             select(UserSession, User)
             .join(User, UserSession.user_id == User.id)
             .where(UserSession.is_active == True)
             .order_by(UserSession.last_activity.desc())
+            .offset(offset)
+            .limit(limit)
         )
         session_users = result.all()
         
@@ -231,7 +249,7 @@ async def get_active_sessions(
             await session.commit()
         
         return ActiveSessionsResponse(
-            total_sessions=len(session_info),
+            total_sessions=total_sessions,
             sessions=session_info
         )
         
@@ -373,10 +391,19 @@ async def delete_user(
 @router.get("/users", response_model=UserListResponse)
 async def get_all_users(
     current_admin: User = Depends(get_current_admin_user),
-    session: AsyncSession = Depends(get_async_session)
+    session: AsyncSession = Depends(get_async_session),
+    limit: int = Query(default=10, ge=1, le=100, description="Количество записей на странице"),
+    offset: int = Query(default=0, ge=0, description="Смещение от начала списка")
 ):
     """
     Получение списка всех пользователей системы (только для администраторов)
+    
+    Параметры:
+    - limit: количество записей на странице (по умолчанию 10, максимум 100)
+    - offset: смещение от начала списка (по умолчанию 0)
+    
+    Сортировка:
+    - Записи сортируются по полю username в алфавитном порядке
     
     Returns:
         UserListResponse: Список всех пользователей
@@ -394,14 +421,21 @@ async def get_all_users(
         HTTPException(500): В случае внутренней ошибки сервера
     """
     try:
-        # Получаем всех пользователей
+        # Получаем общее количество пользователей
+        total_count = await session.execute(select(User))
+        total_users = len(total_count.scalars().all())
+
+        # Получаем пользователей с пагинацией
         result = await session.execute(
-            select(User).order_by(User.username)
+            select(User)
+            .order_by(User.username)
+            .offset(offset)
+            .limit(limit)
         )
         users = result.scalars().all()
         
         return UserListResponse(
-            all_users=len(users),
+            all_users=total_users,
             users=users
         )
     except Exception as e:
@@ -430,9 +464,9 @@ async def refresh_token(
             - token_type: тип токена (всегда "bearer")
     
     Raises:
+        HTTPException(400): Если токен некорректен или сессия неактивна
         HTTPException(401): Если пользователь не найден или неактивен
-        HTTPException(404): Если сессия не найдена или неактивна
-        HTTPException(500): В случае внутренней ошибки сервера
+        HTTPException(404): Если сессия не найдена
     """
     try:
         # Очищаем токен от префикса Bearer если он есть
@@ -440,11 +474,20 @@ async def refresh_token(
         if old_token.startswith("Bearer "):
             old_token = old_token[7:]
 
+        try:
+            # Проверяем валидность старого токена
+            payload = decode_token(old_token)
+        except Exception as e:
+            logger.warning(f"Попытка обновить невалидный токен: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Невалидный токен"
+            )
+
         # Находим сессию с этим токеном
         user_session = await session.execute(
             select(UserSession).where(
-                UserSession.access_token == old_token,
-                UserSession.is_active == True
+                UserSession.access_token == old_token
             )
         )
         user_session = user_session.scalar_one_or_none()
@@ -452,7 +495,13 @@ async def refresh_token(
         if not user_session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Сессия не найдена или неактивна"
+                detail="Сессия не найдена"
+            )
+
+        if not user_session.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Сессия неактивна. Необходима повторная авторизация"
             )
 
         # Получаем пользователя
@@ -461,10 +510,16 @@ async def refresh_token(
         )
         user = user.scalar_one_or_none()
 
-        if not user or not user.is_active:
+        if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Пользователь не найден или неактивен"
+                detail="Пользователь не найден"
+            )
+
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Пользователь неактивен"
             )
 
         # Создаем новый токен
@@ -484,8 +539,10 @@ async def refresh_token(
 
         return {"access_token": new_token, "token_type": "bearer"}
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Ошибка при обновлении токена: {str(e)}")
+        logger.error(f"Непредвиденная ошибка при обновлении токена: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Произошла ошибка при обновлении токена"
@@ -548,4 +605,25 @@ async def logout(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Произошла ошибка при завершении сессии"
-        ) 
+        )
+
+@router.get("/me", response_model=UserResponse)
+async def get_current_user_info(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """
+    Получение информации о текущем авторизованном пользователе
+    
+    Returns:
+        UserResponse: Информация о текущем пользователе
+            - id: уникальный идентификатор пользователя
+            - username: имя пользователя
+            - is_active: статус активности
+            - is_admin: статус администратора
+            - created_at: дата и время создания
+    
+    Raises:
+        HTTPException(401): Если токен авторизации недействителен
+    """
+    return current_user
