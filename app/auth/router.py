@@ -23,6 +23,7 @@ from app.auth.security import (
     MAX_SESSIONS_PER_USER
 )
 from app.auth.dependencies import get_current_user, get_current_admin_user, get_client_info, decode_token
+from app.auth.utils import get_moscow_time, convert_to_moscow_time
 from app.logging import setup_logger
 
 # Настройка логгера
@@ -100,7 +101,9 @@ async def login(
         user_id=user.id,
         access_token=access_token,
         device_info=client_info["device_info"],
-        ip_address=client_info["ip_address"]
+        ip_address=client_info["ip_address"],
+        created_at=get_moscow_time(),
+        last_activity=get_moscow_time()
     )
     session.add(new_session)
     await session.commit()
@@ -223,14 +226,14 @@ async def get_active_sessions(
                 decode_token(sess.access_token)
                 
                 # Если токен валидный, добавляем сессию в список
-                duration = sess.last_activity - sess.created_at
+                duration = convert_to_moscow_time(sess.last_activity) - convert_to_moscow_time(sess.created_at)
                 session_info.append(
                     SessionInfo(
                         id=sess.id,
                         device_info=sess.device_info,
                         ip_address=sess.ip_address,
-                        created_at=sess.created_at,
-                        last_activity=sess.last_activity,
+                        created_at=convert_to_moscow_time(sess.created_at),
+                        last_activity=convert_to_moscow_time(sess.last_activity),
                         duration=str(duration),
                         username=user.username
                     )
@@ -530,7 +533,7 @@ async def refresh_token(
 
         # Обновляем информацию о сессии
         user_session.access_token = new_token
-        user_session.last_activity = datetime.utcnow()
+        user_session.last_activity = get_moscow_time()
         user_session.device_info = client_info["device_info"]
         user_session.ip_address = client_info["ip_address"]
         

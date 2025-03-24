@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from transfer_data.database import get_async_session
 from app.logging import setup_logger
+from app.auth.utils import get_moscow_time
 from app.auth.models import User, UserSession
 from app.auth.security import oauth2_scheme, decode_token, MAX_SESSIONS_PER_USER
 
@@ -79,7 +80,7 @@ async def get_current_user(
         logger.debug(f"Found valid session: {session_result.id}")
         
         # Обновляем время последней активности
-        session_result.last_activity = datetime.utcnow()
+        session_result.last_activity = get_moscow_time()
         await session.commit()
             
         logger.debug(f"Successfully authenticated user: {user.username}")

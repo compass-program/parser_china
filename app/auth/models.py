@@ -1,7 +1,8 @@
+from datetime import datetime
 from sqlalchemy import Integer, String, Column, ForeignKey, Boolean, DateTime
 from sqlalchemy.orm import relationship
 from transfer_data.database import Base
-from datetime import datetime
+from app.auth.utils import get_moscow_time
 
 
 class User(Base):
@@ -12,7 +13,7 @@ class User(Base):
     hashed_password = Column(String)
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=get_moscow_time)
     sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
 
 class UserSession(Base):
@@ -23,7 +24,8 @@ class UserSession(Base):
     access_token = Column(String, unique=True)
     device_info = Column(String)
     ip_address = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    last_activity = Column(DateTime, default=datetime.utcnow)
     is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), default=get_moscow_time)
+    last_activity = Column(DateTime(timezone=True), default=get_moscow_time)
+
     user = relationship("User", back_populates="sessions")
