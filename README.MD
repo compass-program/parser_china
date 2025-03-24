@@ -31,10 +31,12 @@ pip install -r requirements.txt
 alembic revision --autogenerate -m "init_db"
 alembic upgrade head
 ```
-В таблицу лиг, установить значения нужных лиг:
+Установите значения нужных лиг и создайте суперпользователя:
 ```bash
 chmod +x scripts/add_league_entries.sh
+chmod +x scripts/create_superuser.sh
 scripts/add_league_entries.sh
+scripts/create_superuser.sh
 ```
 ### 4. Установка и запуск Redis
 Если у вас еще не установлен Redis, следуйте инструкциям:
@@ -91,15 +93,31 @@ celery -A services_app.celery_app flower
 ### Структура проекта
 ```plaintext
 project/
+├── alembic/
+│   ├── versions/
+│   ├── env.py
+│   ├── README
+│   └── script.py.mako
 ├── app/
+│   ├── auth/
+│   │   ├── __init__.py
+│   │   ├── dependencies.py
+│   │   ├── models.py
+│   │   ├── router.py
+│   │   ├── schemas.py
+│   │   ├── security.py
+│   │   └── utils.py
 │   ├── __init__.py
+│   ├── app_factory.py
 │   ├── main.py
 │   ├── logging.py
 │   ├── router.py
-│   └── schema.py
+│   ├── models.py
+│   └── schemas.py
 ├── fetch_data/
 │   ├── __init__.py
-│   ├── fetch.py
+│   ├── akty.py
+│   ├── fav_check_parser.py
 │   ├── fb.py
 │   └── parsers.py
 ├── services_app/
@@ -107,13 +125,20 @@ project/
 │   ├── tasks.py
 │   └── celery_app.py
 ├── scripts/
+│   ├── add_league_entries.sh
+│   ├── create_superuser.sh
+│   ├── reset_table_match.sh
 │   └── run_initial_check_and_start_parsers.sh
 ├── transfer_data/
 │   ├── __init__.py
+│   ├── database.py
+│   ├── redis_client.py
+│   ├── telegram_bot.py
 │   └── socketio_server.py
 ├── logs/
 ├── .env
 ├── .gitignore
+├── alembic.ini
 ├── requirements.txt
 └── README.md
 ```
@@ -140,6 +165,8 @@ tasks.py: Определение задач Celery.
 socketio_server.py: Сервер socket.io.
 
 akty.py: Реализация парсера Akty.com.
+
+fav_check_parser.py: Реализация парсера проверки избранного для Akty.com
 
 fb.py: Реализация парсера fb.com.
 
