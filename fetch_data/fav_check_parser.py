@@ -402,11 +402,11 @@ class FavAkty:
                         )
                         fav_icon_element = fav_element.find_element(By.TAG_NAME, "span")
                         fav_style = fav_icon_element.get_attribute('style')
-                        pattern = r'resource/(.+?)\.svg'
+                        pattern = r'url\("undefined/image/(\d+)/([a-f0-9]+)\.svg"\)'
                         match = re.search(pattern, fav_style)
                         if match:
                             check_value = "4dc811b0bc8e11efa267bd6434b1d6a3"
-                            extract_value = match.group(1)
+                            _, extract_value = match.groups()
                             if extract_value == check_value:
                                 fav_icon_element.click()
                                 await self.send_to_logs(f'Лига "{league_name}" успешно добавлена в избранное')
@@ -415,16 +415,16 @@ class FavAkty:
                                 await self.send_to_logs(f'Лига "{league_name}" уже находится в избранном')
                                 await asyncio.sleep(1)
 
+                    else:
+                        print(f'Лига "{league_name}" не найдена в списке нужных лиг')
+                        await asyncio.sleep(1)
+
                 except TimeoutException as e:
                     await self.send_to_logs(f'Время ожидания загрузки истекло: {str(e)}')
                     continue
                 except NoSuchElementException as e:
                     await self.send_to_logs(f'Не найден элемент: {str(e)}')
                     continue
-
-                else:
-                    print(f'Лига "{league_name}" не найдена в списке нужных лиг')
-                    await asyncio.sleep(1)
 
     async def change_zoom(
             self
