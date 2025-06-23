@@ -315,7 +315,8 @@ class FetchAkty:
             try:
                 options = uc.ChromeOptions()
                 if self.proxy:
-                    options.add_argument(f'--proxy-server={self.proxy}')
+                    proxy = f'socks5://{self.proxy}'
+                    options.add_argument(f'--proxy-server={proxy}')
                 driver = uc.Chrome(options=options, headless=headless)
                 return driver
             except WebDriverException as e:
