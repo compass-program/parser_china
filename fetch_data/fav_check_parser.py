@@ -403,11 +403,23 @@ class FavAkty:
                         )
                         fav_icon_element = fav_element.find_element(By.TAG_NAME, "span")
                         fav_style = fav_icon_element.get_attribute('style')
-                        pattern = r'url\("https://assets-image-ty\.dyq086\.com/public/upload/image/(\d+)/([a-f0-9]+)\.svg"\)'
+
+                        # pattern = r'url\("https://assets-image-ty\.dyq086\.com/public/upload/image/(\d+)/([a-f0-9]+)\.svg"\)'
+                        # pattern = r'url\("(?:https://assets-image-ty\.dyq086\.com/public/upload/image|undefined/image)/(\d+)/([a-f0-9]+)\.svg"\)'
+                        pattern = (
+                            r'url\((["\'])'  # url(' или url("
+                            r'(?:https?://[^/]+)?'  # опциональный домен с протоколом
+                            r'(?:/)?'  # опциональный слеш
+                            r'(?:public/upload|cdn_assets|undefined)?/image/'
+                            r'(\d+)/([a-f0-9]+)\.(?:svg|png)'  # дата + hash + расширение
+                            r'\1\)'  # закрывающая кавычка и скобка
+                        )
+
                         match = re.search(pattern, fav_style)
+
                         if match:
                             check_value = "4dc811b0bc8e11efa267bd6434b1d6a3"
-                            _, extract_value = match.groups()
+                            _, _, extract_value = match.groups()
                             if extract_value == check_value:
                                 fav_icon_element.click()
                                 await self.send_to_logs(f'Лига "{league_name}" успешно добавлена в избранное')
