@@ -572,7 +572,7 @@ class FetchAkty:
 
                     h4_element = await self.wait_for_element(
                         By.XPATH,
-                        "//img[@src='https://senbackkg.f7cvu.com/main-consumer-web/assets-oss/ak/images/header/ty-hq.71265a222592e2d6179f70470393f43f.webp?x-oss-process=image/resize,w_210,h_210/quality,Q_100/sharpen,100/format,webp']"
+                        "//img[@src='https://senbackkg.chunkeji.com/main-consumer-web/assets-oss/ak/images/header/ty-hq.71265a222592e2d6179f70470393f43f.webp?x-oss-process=image/resize,w_210,h_210/quality,Q_100/sharpen,100/format,webp']"
                     )
 
                     if h4_element.is_displayed() and h4_element.is_enabled():
