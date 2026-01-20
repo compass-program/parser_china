@@ -232,7 +232,7 @@ class FetchAkty:
                     await self.redis_client.add_to_list(key_for_save, json_data)
                 # Проверяем, нужно ли отправить данные в Telegram
             is_send_tg = any(0 <
-                data_rate[rate_bet] <= 1.68 for rate_bet in rate_bets)
+                 data_rate[rate_bet] <= 1.68 for rate_bet in rate_bets)
             if is_send_tg:
                 key_fb = (f"fb.com_all_data, {liga_name.lower()}, "
                        f"{opponent_0.lower()}, {opponent_1.lower()}")
@@ -555,28 +555,23 @@ class FetchAkty:
 
         for attempt in range(max_retries):
             try:
-                await asyncio.sleep(15)
-                ul_element = await self.wait_for_element(
-                    By.CLASS_NAME,
-                    "header__venue__3IZlT",
+                await asyncio.sleep(5)
+                self.driver.execute_script("window.scrollBy(0, 800);")
+                await asyncio.sleep(5)
+                bks_element = await self.wait_for_element(
+                    By.CSS_SELECTOR,
+                    "div[class*='styles__item_content__2IMkn']",
                     timeout=30
                 )
-                if ul_element:
-                    span_element = ul_element.find_element(
+                await self.scroll_to_element(bks_element)
+                if bks_element:
+                    await asyncio.sleep(10)
+                    button_element = bks_element.find_element(
                         By.XPATH,
-                        ".//span[text()='体育']"
+                        "//img[@src='/client/./assets/pic_sport_huanqiu@2x.668be1cd.png?x-oss-process=image/quality,Q_90/format,webp']"
                     )
-                    self.action.move_to_element(span_element).perform()
-                    await asyncio.sleep(2)
-                    # Проверка кликабельности элемента
-
-                    h4_element = await self.wait_for_element(
-                        By.XPATH,
-                        "//img[@src='https://senbackkg.ajnr9.com/main-consumer-web/assets-oss/ak/images/header/ty-hq.71265a222592e2d6179f70470393f43f.webp?x-oss-process=image/resize,w_210,h_210/quality,Q_100/sharpen,100/format,webp']"
-                    )
-
-                    if h4_element.is_displayed() and h4_element.is_enabled():
-                        h4_element.click()
+                    if button_element.is_displayed() and button_element.is_enabled():
+                        button_element.click()
                         return
                     else:
                         # Если элемент не кликабелен, перезагружаем страницу и повторяем
@@ -633,28 +628,52 @@ class FetchAkty:
             await self.aggregator_page()
 
         await self.send_to_logs('Успешный переход в раздел баскетбола')
+        await asyncio.sleep(5)
+
         # Алгоритм проверки избранных лиг
-        leagues_block = await self.wait_for_element(
-            By.CSS_SELECTOR, 'div.layout_main_center',
-            timeout=60
-        )
+        try:
+            leagues_block = await self.wait_for_element(
+                By.CSS_SELECTOR,
+                "div.layout_main_center",
+                timeout=30
+            )
 
-        await self.send_to_logs('Поиск кнопки избранного')
-        hide_scroll_bar = leagues_block.find_element(By.CSS_SELECTOR, "div.hide-scrollbar")
-        hide_scroll_bar_elems = hide_scroll_bar.find_elements(
-            By.CSS_SELECTOR,
-            "div[class*='item yb-flex-center']"
-        )
+            hide_scroll = leagues_block.find_element(By.CSS_SELECTOR, "div.hide-scrollbar")
+            items = hide_scroll.find_elements(By.CSS_SELECTOR, "div[class*='item yb-flex-center']")
 
-        if hide_scroll_bar_elems:
-            fav_element = hide_scroll_bar_elems[1]
-            await asyncio.sleep(3)
-            fav_element.click()
-            await self.send_to_logs('Нажали на кнопку избранное')
+            if not items or len(items) < 2:
+                raise NoSuchElementException("Не найдены элементы меню (item yb-flex-center)")
+
+            fav = items[1]
+
+            # важно: дождаться кликабельности, а не просто presence
+            WebDriverWait(self.driver, 15).until(EC.element_to_be_clickable(fav))
+            self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", fav)
+            await asyncio.sleep(1)
+            self.driver.execute_script("arguments[0].click();", fav)  # JS-клик как фолбек
+            await self.send_to_logs("Нажали на кнопку избранное (items[1])")
             await asyncio.sleep(5)
 
-        else:
-            raise NoSuchElementException('Не найдена кнопка избранного')
+        except Exception:
+            await self.send_to_logs("Ищем и жмём '收藏' альтернативным способом")
+
+            fav_xpath = (
+                "//span[contains(@class,'text-name')][contains(normalize-space(.),'收藏')]"
+                "/ancestor::div[contains(@class,'item')][1]"
+            )
+
+            fav_item = await self.wait_for_element(By.XPATH, fav_xpath, timeout=30)
+
+            try:
+                WebDriverWait(self.driver, 15).until(EC.element_to_be_clickable((By.XPATH, fav_xpath)))
+                self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", fav_item)
+                await asyncio.sleep(1)
+                fav_item.click()
+            except Exception:
+                self.driver.execute_script("arguments[0].click();", fav_item)
+
+            await asyncio.sleep(5)
+            await self.send_to_logs("Нажали на кнопку избранное (fallback 收藏)")
 
     async def change_zoom(
             self
@@ -762,212 +781,255 @@ class FetchAkty:
             await self.send_to_logs(f'При переключении произошла ошибка: {e}')
             await self.run()
 
-    async def extract_league_data(
-            self,
-            target_leagues: dict
-    ) -> dict:
+    async def extract_league_data(self, target_leagues: dict) -> dict:
         """
-        Извлечение данных лиг из HTML.
-        :param target_leagues: dict
-        :return: dict
+        Парсит лиги/матчи из текущей разметки:
+          - matc-type-card: секция (滚球盘/未开赛 и т.п.)
+          - tid_title_num: заголовок лиги
+          - tid_container_num: контейнер матчей для последнего заголовка лиги
+        Возвращает только изменившиеся игры (как раньше), обновляет self.previous_data.
         """
+
         soup = await self.get_content()
         leagues_data = {NAME_BOOKMAKER: {}}
         previous_leagues_data = {NAME_BOOKMAKER: {}}
-        scroll_content = soup.find('div',
-                                   class_='v-scroll-content relative-position')
 
+        if not soup:
+            return leagues_data
+
+        scroll_content = soup.find("div", class_="v-scroll-content relative-position")
         if not scroll_content:
             return leagues_data
 
         cards = scroll_content.find_all(
-            'div',
-            class_=re.compile(
-                'match-list-card v-scroll-item relative-position'),
+            "div",
+            class_=re.compile(r"\bmatch-list-card\b"),
             recursive=False
         )
-
-        league_name = None
         if not cards:
             return leagues_data
-        new_cards = cards[1:]
 
-        for i in range(0, len(new_cards), 2):
-            div_name_liga = new_cards[i].find('span',
-                                      class_="ellipsis allow-user-select")
-            if div_name_liga:
-                league_name = div_name_liga.get_text()
-                # if league_name in target_leagues.keys():
-                    # await self.click_element_by_text(card, league_name)
-            if league_name in target_leagues.keys():
-                league_name = target_leagues[league_name]
-                list_mid_elements = new_cards[i + 1].find_all('div',
-                                                  class_='c-match-item')
-                for list_mid_element in list_mid_elements:
-                    opponent_0 = list_mid_element.find('div',
-                                                       class_='row-item team-item team-home EU')
-                    opponent_1 = list_mid_element.find('div',
-                                                       class_='row-item team-item team-away EU')
+        current_league_raw = None
 
-                    if opponent_0 and opponent_1:
-                        opponent_0_name = opponent_0.find('div',
-                                                          class_=re.compile(
-                                                              'allow-user-select')).get_text()
-                        translate_opponent_0_name = await self.translate_and_cache(
-                            opponent_0_name) if opponent_0_name != '' else ''
-                        opponent_1_name = opponent_1.find('div',
-                                                          class_=re.compile(
-                                                              'allow-user-select')).get_text()
-                        translate_opponent_1_name = await self.translate_and_cache(
-                            opponent_1_name) if opponent_1_name != '' else ''
+        seen_in_pass = set()
 
-                        opponent_0_score_div = opponent_0.find('div',
-                                                               class_='score')
-                        opponent_0_score = opponent_0_score_div.find(
-                            'span').get_text() if opponent_0_score_div else ""
-                        opponent_1_score_div = opponent_1.find('div',
-                                                               class_='score')
-                        opponent_1_score = opponent_1_score_div.find(
-                            'span').get_text() if opponent_1_score_div else ""
+        for card in cards:
+            cls_list = card.get("class", [])
+            cls = " ".join(cls_list)
 
-                        try:
-                            bet_divs = list_mid_element.find_all('div', class_='handicap-col')
-                            handicap_bet_div = bet_divs[1].find_all('div',
-                                                                    class_='highlight-odds')
-                            handicap_point_divs = bet_divs[1].find_all('div',
-                                                                    class_='handicap-value-text')
-                        except Exception as e:
-                            await self.send_to_logs(f'Ошибка при извлечении ставок: {e}')
-                            continue
+            # секции типа "滚球盘/未开赛" нам не нужны
+            if "matc-type-card" in cls:
+                continue
 
-                        opponent_0_handicap_bet = handicap_bet_div[
-                            0].get_text().replace("EU ", "") if len(handicap_bet_div) > 0 else ""
-                        opponent_0_handicap_point = handicap_point_divs[
-                            0].get_text().strip() if len(
-                            handicap_point_divs) > 0 else ""
-                        opponent_1_handicap_bet = handicap_bet_div[
-                            1].get_text().replace("EU ", "") if len(handicap_bet_div) > 1 else ""
-                        opponent_1_handicap_point = handicap_point_divs[
-                            1].get_text().strip() if len(
-                            handicap_point_divs) > 1 else ""
+            # заголовок лиги
+            if "tid_title_num" in cls:
+                span = card.select_one("span.ellipsis.allow-user-select")
+                current_league_raw = span.get_text(strip=True) if span else None
+                continue
 
-                        total_bet_div = bet_divs[2].find_all('div',
-                                                             class_='highlight-odds')
-                        total_point_divs = bet_divs[2].find_all('div',
-                                                                class_='handicap-value-text')
+            # контейнер матчей
+            if "tid_container_num" not in cls:
+                continue
 
-                        opponent_0_total_bet = total_bet_div[
-                            0].get_text().replace("EU ", "") if len(total_bet_div) > 0 else ""
-                        opponent_0_total_point = total_point_divs[
-                            0].get_text().strip() if len(
-                            total_point_divs) > 0 else ""
-                        opponent_1_total_bet = total_bet_div[
-                            1].get_text().replace("EU ", "") if len(total_bet_div) > 1 else ""
+            if not current_league_raw or current_league_raw not in target_leagues:
+                continue
 
-                        process_time_span = list_mid_element.find('span',
-                                                                  class_='timer-layout2')
-                        process_time = process_time_span.get_text() if process_time_span else ""
+            league_name = target_leagues[current_league_raw]
 
-                        process_time_div_text = list_mid_element.find('div',
-                                                                      class_='process_name')
-                        process_time_text = self.time_game_translate.get(
-                            process_time_div_text.get_text().strip(),
-                            ''
-                        ) if process_time_div_text else ""
+            match_items = card.select("div.c-match-item")
+            if not match_items:
+                continue
 
-                        server_time = datetime.now(
-                            tz=ZoneInfo("Europe/Moscow")).strftime("%H:%M:%S")
+            leagues_data[NAME_BOOKMAKER].setdefault(league_name, [])
+            previous_leagues_data[NAME_BOOKMAKER].setdefault(league_name, [])
 
-                        game_info = {
-                            'opponent_0': translate_opponent_0_name,
-                            'opponent_1': translate_opponent_1_name,
-                            'score_game': f'{opponent_0_score}:{opponent_1_score}',
-                            'time_game': f'{process_time_text} {process_time}',
-                            'rate': {
-                                'total_point': opponent_0_total_point,
-                                'total_bet_0': opponent_0_total_bet,
-                                'total_bet_1': opponent_1_total_bet,
-                                'handicap_point_0': opponent_0_handicap_point,
-                                'handicap_bet_0': opponent_0_handicap_bet,
-                                'handicap_point_1': opponent_1_handicap_point,
-                                'handicap_bet_1': opponent_1_handicap_bet,
-                            },
-                            'server_time': server_time,
-                        }
+            for m_i, item in enumerate(match_items):
+                try:
+                    # команды: иногда классы team-home/team-away могут быть кривыми, поэтому берём первые 2 team-item
+                    teams = item.select("div.row-item.team-item")
+                    if len(teams) < 2:
+                        continue
+                    team0, team1 = teams[0], teams[1]
 
-                        if league_name not in leagues_data[NAME_BOOKMAKER]:
-                            leagues_data[NAME_BOOKMAKER][league_name] = []
-                            previous_leagues_data[NAME_BOOKMAKER][
-                                league_name] = []
+                    def team_name(t) -> str:
+                        el = t.select_one(".team-name span.ellipsis1") or t.select_one("span.ellipsis1")
+                        return el.get_text(strip=True) if el else t.get_text(" ", strip=True)
 
-                        if (
-                                self.previous_data and league_name in self.previous_data.get(
-                                NAME_BOOKMAKER, {})):
-                            changed_data = await self.check_changed_dict(
-                                self.previous_data[NAME_BOOKMAKER][league_name],
-                                game_info,
-                                league_name
-                            )
-                            if changed_data:
-                                leagues_data[NAME_BOOKMAKER][
-                                    league_name].append(game_info)
+                    opponent_0_name = team_name(team0)
+                    opponent_1_name = team_name(team1)
+                    if not opponent_0_name or not opponent_1_name:
+                        continue
 
-                        previous_leagues_data[NAME_BOOKMAKER][
-                                league_name].append(game_info)
-        # Обновляем завершённые игры перед заменой previous_data
+                    tr_0 = await self.translate_and_cache(opponent_0_name)
+                    tr_1 = await self.translate_and_cache(opponent_1_name)
+
+                    match_key = (league_name, tr_0.strip().lower(), tr_1.strip().lower())
+                    if match_key in seen_in_pass:
+                        continue
+                    seen_in_pass.add(match_key)
+
+                    # счёт: в твоём HTML score — это div.score с текстом (без span)
+                    def score(t) -> str:
+                        sc = t.select_one("div.score")
+                        return sc.get_text(strip=True) if sc else ""
+
+                    sc0 = score(team0)
+                    sc1 = score(team1)
+
+                    # время/статус
+                    process_time = ""
+                    span_time = item.select_one("span.timer-layout2")
+                    if span_time:
+                        process_time = span_time.get_text(strip=True)
+
+                    process_time_text = ""
+                    div_proc = item.select_one("div.process_name")
+                    if div_proc:
+                        process_time_text = self.time_game_translate.get(div_proc.get_text(strip=True), "")
+
+                    # рынки
+                    oneXtwo_home = oneXtwo_away = oneXtwo_draw = ""
+                    h_bet_0 = h_bet_1 = ""
+                    h_point_0 = h_point_1 = ""
+                    t_bet_0 = t_bet_1 = ""
+                    t_point = ""
+
+                    cols = item.select("div.handicap-col")
+                    # 1X2
+                    if len(cols) > 0:
+                        cells = cols[0].select("div.c-bet-item")
+                        for c in cells:
+                            label_el = c.select_one("div.handicap-value-text")
+                            odd_el = c.select_one("div.highlight-odds")
+                            label = label_el.get_text(strip=True) if label_el else ""
+                            odd = odd_el.get_text(strip=True) if odd_el else ""
+                            if label == "主":
+                                oneXtwo_home = odd
+                            elif label == "客":
+                                oneXtwo_away = odd
+                            elif label == "平":
+                                oneXtwo_draw = odd
+
+                    # фора
+                    if len(cols) > 1:
+                        odds = cols[1].select("div.highlight-odds")
+                        pts = cols[1].select("div.handicap-value-text")
+                        h_bet_0 = odds[0].get_text(strip=True).replace("EU ", "") if len(odds) > 0 else ""
+                        h_bet_1 = odds[1].get_text(strip=True).replace("EU ", "") if len(odds) > 1 else ""
+                        h_point_0 = pts[0].get_text(strip=True) if len(pts) > 0 else ""
+                        h_point_1 = pts[1].get_text(strip=True) if len(pts) > 1 else ""
+
+                    # тотал
+                    if len(cols) > 2:
+                        odds = cols[2].select("div.highlight-odds")
+                        pts = cols[2].select("div.handicap-value-text")
+                        t_bet_0 = odds[0].get_text(strip=True).replace("EU ", "") if len(odds) > 0 else ""
+                        t_bet_1 = odds[1].get_text(strip=True).replace("EU ", "") if len(odds) > 1 else ""
+                        # обычно тотал лежит в первом handicap-value-text ("3.5")
+                        t_point = pts[0].get_text(strip=True) if len(pts) > 0 else ""
+
+                    server_time = datetime.now(tz=ZoneInfo("Europe/Moscow")).strftime("%H:%M:%S")
+
+                    game_info = {
+                        "opponent_0": tr_0,
+                        "opponent_1": tr_1,
+                        "score_game": f"{sc0}:{sc1}",
+                        "time_game": f"{process_time_text} {process_time}".strip(),
+                        "rate": {
+                            "oneXtwo_home": oneXtwo_home,
+                            "oneXtwo_away": oneXtwo_away,
+                            "oneXtwo_draw": oneXtwo_draw,
+                            "total_point": t_point,
+                            "total_bet_0": t_bet_0,
+                            "total_bet_1": t_bet_1,
+                            "handicap_point_0": h_point_0,
+                            "handicap_bet_0": h_bet_0,
+                            "handicap_point_1": h_point_1,
+                            "handicap_bet_1": h_bet_1,
+                        },
+                        "server_time": server_time,
+                    }
+
+                    # changed-логика как у тебя
+                    if self.previous_data and league_name in self.previous_data.get(NAME_BOOKMAKER, {}):
+                        changed = await self.check_changed_dict(
+                            self.previous_data[NAME_BOOKMAKER][league_name],
+                            game_info,
+                            league_name,
+                        )
+                        if changed:
+                            leagues_data[NAME_BOOKMAKER][league_name].append(game_info)
+
+                    previous_leagues_data[NAME_BOOKMAKER][league_name].append(game_info)
+
+                except Exception as e:
+                    await self.send_to_logs(f"extract: match[{m_i}] parse error: {e}", db=True)
+                    continue
+
+        # финализация как раньше
         await self.update_ended_games(leagues_data, previous_leagues_data)
         self.previous_data = previous_leagues_data
+
         leagues_data[NAME_BOOKMAKER] = {
             k: v for k, v in leagues_data[NAME_BOOKMAKER].items() if v
         }
-        if any(leagues_data[NAME_BOOKMAKER].values()):
-            return leagues_data
+        return leagues_data
 
-    async def update_ended_games(self, leagues_data: dict,
-                                 previous_leagues_data: dict) -> None:
-        """
-        Обновление словаря self.ended_games для отслеживания завершённых игр.
+    async def update_ended_games(self, leagues_data: dict, previous_leagues_data: dict) -> None:
+        # Быстрое множество текущих игр по уникальному ключу
+        current_keys = set()
+        for league, games in previous_leagues_data.get(NAME_BOOKMAKER, {}).items():
+            for g in games:
+                current_keys.add((league, g.get("opponent_0"), g.get("opponent_1")))
 
-        Если игра отсутствует в новом словаре leagues_data,
-        но присутствует в previous_leagues_data,
-        она добавляется в self.ended_games.
-        Если игра отсутствует в течение 2000 итераций,
-        то устанавливается флаг 'is_end_game' в True,
-        и игра удаляется из self.ended_games.
+        # ended_games: увеличиваем счётчик если игра исчезла
+        for league, games in previous_leagues_data.get(NAME_BOOKMAKER, {}).items():
+            for g in games:
+                key = (league, g.get("opponent_0"), g.get("opponent_1"))
+                if key not in current_keys:
+                    continue  # на всякий
 
-        :param leagues_data: dict - Текущие данные игр, полученные с сайта.
-        :param previous_leagues_data: dict - Предыдущие данные игр.
-        """
-        for league, games in previous_leagues_data[NAME_BOOKMAKER].items():
-            for game_info in games:
-                opponent_0 = game_info['opponent_0']
-                opponent_1 = game_info['opponent_1']
-                unique_key = (league, opponent_0,
-                              opponent_1)
-                if league not in leagues_data[
-                    NAME_BOOKMAKER] or game_info not in \
-                        leagues_data[NAME_BOOKMAKER][league]:
-                    if unique_key not in self.ended_games:
-                        self.ended_games[unique_key] = {'info': game_info,
-                                                        'count': 0}
-                    else:
-                        self.ended_games[unique_key]['count'] += 1
+        # ВАЖНО: сравниваем “новые распарсенные” (previous_leagues_data) с “теми что реально есть сейчас”
+        # Тут текущими считаем previous_leagues_data (это “сейчас”), а прошлым — self.previous_data (это “вчера”)
+        prev = self.previous_data.get(NAME_BOOKMAKER, {}) if self.previous_data else {}
 
-                        if self.ended_games[unique_key]['count'] >= 2000:
-                            leagues_data[NAME_BOOKMAKER][league][game_info][
-                                'is_end_game'] = True
-                            await self.send_to_logs(
-                                f"Игра окончательно завершена: \n"
-                                f" {leagues_data[NAME_BOOKMAKER][game_info]}"
-                            )
-                            await self.delete_games(
-                                leagues_data[NAME_BOOKMAKER][league][game_info],
-                                league
-                            )
-                            del self.ended_games[unique_key]
-                else:
-                    if unique_key in self.ended_games:
-                        del self.ended_games[unique_key]
+        now_keys = set()
+        for league, games in previous_leagues_data.get(NAME_BOOKMAKER, {}).items():
+            for g in games:
+                now_keys.add((league, g.get("opponent_0"), g.get("opponent_1")))
+
+        prev_keys = set()
+        for league, games in prev.items():
+            for g in games:
+                prev_keys.add((league, g.get("opponent_0"), g.get("opponent_1")))
+
+        disappeared = prev_keys - now_keys
+
+        for key in disappeared:
+            if key not in self.ended_games:
+                self.ended_games[key] = {"info": None, "count": 1}
+            else:
+                self.ended_games[key]["count"] += 1
+
+            if self.ended_games[key]["info"] is None:
+                # найдём последний известный game_info
+                league, o0, o1 = key
+                for g in prev.get(league, []):
+                    if g.get("opponent_0") == o0 and g.get("opponent_1") == o1:
+                        self.ended_games[key]["info"] = g
+                        break
+
+            if self.ended_games[key]["count"] >= 2000:
+                info = self.ended_games[key]["info"]
+                if info:
+                    info["is_end_game"] = True
+                    await self.delete_games(info, key[0])
+                del self.ended_games[key]
+
+        # если игра снова появилась — убираем из ended_games
+        for key in list(self.ended_games.keys()):
+            if key in now_keys:
+                del self.ended_games[key]
 
     async def delete_games(self, data: dict, liga_name: str):
         """
@@ -1087,7 +1149,7 @@ class FetchAkty:
                     self.redis_client = RedisClient()
                     await self.redis_client.connect()
 
-                await self.change_zoom()
+                # await self.change_zoom()
                 await self.init_async_components()
 
                 await self.authorization()
